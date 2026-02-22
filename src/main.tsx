@@ -1,6 +1,68 @@
-import React from 'react'
+import React, { Component, ErrorInfo, ReactNode } from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './App'
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          background: '#0b0f14',
+          color: '#ff4444',
+          padding: '40px',
+          fontFamily: 'JetBrains Mono, monospace',
+        }}>
+          <h1 style={{ fontSize: '24px', marginBottom: '20px' }}>⚠️ Application Error</h1>
+          <pre style={{
+            background: '#1a1a1a',
+            padding: '20px',
+            borderRadius: '8px',
+            overflow: 'auto',
+            fontSize: '12px',
+            color: '#ccc',
+          }}>
+            {this.state.error?.toString()}
+          </pre>
+          <button
+            onClick={() => {
+              localStorage.clear();
+              indexedDB.deleteDatabase('netmon');
+              window.location.reload();
+            }}
+            style={{
+              marginTop: '20px',
+              padding: '10px 20px',
+              background: '#33cc00',
+              border: 'none',
+              borderRadius: '4px',
+              color: '#000',
+              fontFamily: 'JetBrains Mono, monospace',
+              cursor: 'pointer',
+            }}
+          >
+            Reset App Data & Reload
+          </button>
+        </div>
+      );
+    }
+
+    return this.props.children;
+  }
+}
 
 const style = document.createElement('style');
 style.textContent = `
@@ -23,5 +85,9 @@ style.textContent = `
 document.head.appendChild(style);
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><App /></React.StrictMode>
+  <React.StrictMode>
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </React.StrictMode>
 );

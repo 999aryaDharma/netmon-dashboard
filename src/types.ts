@@ -1,22 +1,31 @@
-// 'traffic' = bidirectional (in up green / out down purple)
-// 'latency' = single upward line
-export type SiteType = 'traffic' | 'latency';
+export type SiteType = "traffic" | "latency" | "ping";
 
 export interface DataPoint {
   timestamp: number;
   value: number;
+  lossRate?: number; // Packet loss percentage (0-100) for ping type
 }
 
+// One interface inside a site (e.g. ether1, ether2, LAN)
+export interface SiteInterface {
+  id: string;
+  name: string; // 'ether1', 'ether2', 'LAN', etc.
+  colorIn: string; // color for IN traffic
+  colorOut: string; // color for OUT traffic
+  dataIn: DataPoint[];
+  dataOut: DataPoint[];
+  dataRtt?: DataPoint[]; // RTT data for ping type
+  dataLoss?: DataPoint[]; // Packet loss data for ping type
+}
+
+// One site = one router/device with multiple interfaces stacked in one chart
 export interface Site {
   id: string;
-  name: string;
+  name: string; // e.g. "Mikrotik-Core-01"
   type: SiteType;
-  colorIn: string;   // green for IN, or single line color for latency
-  colorOut: string;  // purple for OUT (ignored on latency)
-  unit: string;      // 'Mbps' | 'bps' | 'ms' | '%'
-  axisMax: number;   // positive Y max; negative mirror for out
-  dataIn: DataPoint[];
-  dataOut: DataPoint[];  // stored positive, rendered negative
+  unit: string; // 'Mbps' | 'bps' | 'ms' | '%'
+  axisMax: number; // total positive Y max (for ALL stacked interfaces)
+  interfaces: SiteInterface[];
 }
 
 export interface TimeRange {
@@ -24,3 +33,4 @@ export interface TimeRange {
   end: number;
   label: string;
 }
+  
