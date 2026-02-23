@@ -1,281 +1,264 @@
-import React from "react";
-import type { Site, DataPoint } from "../types";
+import React, { useMemo } from "react";
+import { Site } from "../types";
 
-interface PingChartProps {
+const PING_COLORS = {
+  rttLine: "#CECECE", // Putih untuk RTT
+  rttFill: "rgba(255, 255, 255, 0.2)", // Putih transparan untuk fill RTT
+  lossLine: "#CC0000",
+};
+// ============================================
+// NOC THEME COLORS (Observium Style)
+// ============================================
+const THEME = {
+  chartBg: "#323841", // Latar belakang area plot
+  gridLine: "rgba(255, 255, 255, 0.15)", // Garis grid tipis
+  text: "#c8ced6", // Warna teks standar
+  axisTitle: "#e4e8ec", // Warna judul sumbu sedikit lebih terang
+};
+
+export function PingChart({
+  site,
+  startTs,
+  endTs,
+  width,
+  height,
+}: {
   site: Site;
   startTs: number;
   endTs: number;
-  width?: number;
-  height?: number;
-}
-
-const PAD = { top: 20, right: 50, bottom: 36, left: 60 };
-
-// NOC-style palette untuk Ping chart
-const PING_COLORS = {
-  background: "#333333",
-  grid: "rgba(120,140,170,0.18)",
-  axisText: "#9fb3c8",
-  // RTT (hijau/cyan)
-  rttLine: "#00ff88",
-  rttFill: "rgba(0,255,136,0.15)",
-  rttGlow: "rgba(0,255,136,0.85)",
-  // Loss (merah/orange)
-  lossLine: "#ff4444",
-  lossFill: "rgba(255,68,68,0.15)",
-  lossGlow: "rgba(255,68,68,0.85)",
-};
-
-function pathFrom(points: { x: number; y: number }[]): string {
-  if (!points.length) return "";
-  let d = `M ${points[0].x} ${points[0].y}`;
-  for (let i = 1; i < points.length; i++) {
-    d += ` L ${points[i].x} ${points[i].y}`;
-  }
-  return d;
-}
-
-function filterRange(data: DataPoint[], start: number, end: number): DataPoint[] {
-  return data.filter((d) => d.timestamp >= start && d.timestamp <= end);
-}
-
-function getXTicks(startTs: number, endTs: number): { frac: number; label: string }[] {
-  const rangeMs = endTs - startTs;
-  const dayMs = 86_400_000;
-  let intervalMs: number;
-  if (rangeMs <= 12 * 3_600_000) intervalMs = 2 * 3_600_000;
-  else if (rangeMs <= 2 * dayMs) intervalMs = 6 * 3_600_000;
-  else if (rangeMs <= 14 * dayMs) intervalMs = dayMs;
-  else intervalMs = 7 * dayMs;
-
-  const ticks: { frac: number; label: string }[] = [];
-  let ts = Math.ceil(startTs / intervalMs) * intervalMs;
-  const DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-  while (ts <= endTs) {
-    const frac = (ts - startTs) / (endTs - startTs);
-    const d = new Date(ts);
-    let label: string;
-    if (intervalMs <= dayMs)
-      label = `${DAY[d.getDay()]} ${d.getDate().toString().padStart(2, "0")} ${MON[d.getMonth()]}`;
-    else label = `${d.getDate()} ${MON[d.getMonth()]}`;
-    ticks.push({ frac, label });
-    ts += intervalMs;
-  }
-  return ticks;
-}
-
-export function PingChart({ site, startTs, endTs, width = 800, height = 260 }: PingChartProps) {
+  width: number;
+  height: number;
+}) {
+  // Padding yang lebih lebar untuk mengakomodasi teks yang diputar
+  const PAD = { top: 30, right: 50, bottom: 30, left: 75 };
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
-  // Ambil data RTT dan Loss dari interface pertama
   const iface = site.interfaces[0];
-  const rttData = iface.dataRtt || [];
-  const lossData = iface.dataLoss || [];
+  const dataRtt = iface?.dataRtt || [];
+  const dataLoss = iface?.dataLoss || [];
 
-  const rttFiltered = filterRange(rttData, startTs, endTs);
-  const lossFiltered = filterRange(lossData, startTs, endTs);
+  // Filter data sesuai range waktu
+  const rttIn = useMemo(() => {
+    return dataRtt.filter(
+      (d) => d.timestamp >= startTs && d.timestamp <= endTs,
+    );
+  }, [dataRtt, startTs, endTs]);
 
-  // Ambil semua timestamp unik
-  const allTimestamps = Array.from(
-    new Set([...rttFiltered, ...lossFiltered].map((d) => d.timestamp))
-  ).sort((a, b) => a - b);
+  const lossIn = useMemo(() => {
+    return dataLoss.filter(
+      (d) => d.timestamp >= startTs && d.timestamp <= endTs,
+    );
+  }, [dataLoss, startTs, endTs]);
 
-  // Fungsi scaling
-  const rttMax = site.axisMax || 100; // ms
-  const lossMax = 100; // %
+  // Skala X (Waktu)
+  const timeRange = endTs - startTs || 1;
+  const getX = (ts: number) => PAD.left + ((ts - startTs) / timeRange) * chartW;
 
-  const tsToX = (ts: number) => PAD.left + ((ts - startTs) / (endTs - startTs)) * chartW;
-  const rttToY = (v: number) => PAD.top + chartH - (v / rttMax) * chartH;
-  const lossToY = (v: number) => PAD.top + chartH - (v / lossMax) * chartH;
+  // Skala Y Kiri (RTT - default max 100ms agar grafik terlihat penuh)
+  const maxRttVal = Math.max(100, ...rttIn.map((d) => d.value));
+  // Tambahkan buffer 10% di atas agar tidak mentok atap
+  const axisMaxRtt = maxRttVal * 1.1;
+  const getY_Rtt = (val: number) =>
+    PAD.top + chartH - (val / axisMaxRtt) * chartH;
 
-  // Build points untuk RTT line
-  const rttPoints = allTimestamps.map((ts) => {
-    const pt = rttFiltered.find((d) => d.timestamp === ts);
-    return { x: tsToX(ts), y: pt ? rttToY(pt.value) : PAD.top + chartH };
-  });
+  // Skala Y Kanan (Loss - Fixed 0-100%)
+  const getY_Loss = (val: number) => PAD.top + chartH - (val / 100) * chartH;
 
-  // Build points untuk Loss line
-  const lossPoints = allTimestamps.map((ts) => {
-    const pt = lossFiltered.find((d) => d.timestamp === ts);
-    return { x: tsToX(ts), y: pt ? lossToY(pt.value) : PAD.top + chartH };
-  });
+  // --- Path Generator ---
+  const makePath = (
+    data: { timestamp: number; value: number }[],
+    getY: (v: number) => number,
+  ) => {
+    if (data.length < 2) return "";
+    let d = `M ${getX(data[0].timestamp)} ${getY(data[0].value)}`;
+    for (let i = 1; i < data.length; i++) {
+      d += ` L ${getX(data[i].timestamp)} ${getY(data[i].value)}`;
+    }
+    return d;
+  };
 
-  const rttLinePath = pathFrom(rttPoints);
-  const lossLinePath = pathFrom(lossPoints);
+  const pathRtt = makePath(rttIn, getY_Rtt);
+  const pathLoss = makePath(lossIn, getY_Loss);
 
-  // Build area fill paths
-  const rttFillPath = `${rttLinePath} L ${tsToX(allTimestamps[allTimestamps.length - 1] || 0)} ${PAD.top + chartH} L ${tsToX(allTimestamps[0] || 0)} ${PAD.top + chartH} Z`;
-  const lossFillPath = `${lossLinePath} L ${tsToX(allTimestamps[allTimestamps.length - 1] || 0)} ${PAD.top + chartH} L ${tsToX(allTimestamps[0] || 0)} ${PAD.top + chartH} Z`;
+  // --- Ticks Generator ---
+  // Y Ticks (RTT Kiri) - Buat 5 level
+  const yTicksRtt = [];
+  for (let i = 0; i <= 5; i++) {
+    const val = (axisMaxRtt / 5) * i;
+    const y = getY_Rtt(val);
+    yTicksRtt.push({ val, y });
+  }
 
-  const xTicks = getXTicks(startTs, endTs);
+  // Y Ticks (Loss Kanan) - Fixed 0, 25, 50, 75, 100
+  const yTicksLoss = [0, 25, 50, 75, 100].map((val) => ({
+    val,
+    y: getY_Loss(val),
+  }));
+
+  // X Ticks (Waktu) - Targetkan sekitar 8-10 ticks
+  const xTickCount = width < 600 ? 4 : 8;
+  const xTicks = [];
+  const step = timeRange / xTickCount;
+  for (let i = 0; i <= xTickCount; i++) {
+    const ts = startTs + step * i;
+    xTicks.push({ ts, x: getX(ts) });
+  }
+
+  // Helper format waktu NOC Style (HH:mm untuk tengah, DD. Mon untuk akhir)
+  const formatXLabel = (ts: number, isLast: boolean) => {
+    const date = new Date(ts);
+    if (isLast) {
+      // Format: 26. Jun
+      return date
+        .toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
+        .replace(" ", ". ");
+    }
+    // Format: 09:00
+    return date.toLocaleTimeString("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  };
 
   return (
-    <div
-      style={{
-        position: "relative",
-        background: PING_COLORS.background,
-        borderRadius: "2px",
-      }}
-    >
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ display: "block" }}>
-        {/* Background */}
-        <rect x={PAD.left} y={PAD.top} width={chartW} height={chartH} fill={PING_COLORS.background} />
+    // Ubah background SVG utama agar menyatu dengan modal
+    <svg width={width} height={height} style={{ background: "transparent" }}>
+      {/* Area Plot Latar Belakang (Warna Dark Blue/Grey khas RRDTool) */}
+      <rect
+        x={PAD.left}
+        y={PAD.top}
+        width={chartW}
+        height={chartH}
+        fill={THEME.chartBg}
+        stroke="none"
+      />
 
-        {/* Grid horizontal */}
-        {[0, 0.25, 0.5, 0.75, 1].map((ratio, i) => {
-          const y = PAD.top + chartH * ratio;
-          return (
-            <g key={i}>
-              <line
-                x1={PAD.left}
-                y1={y}
-                x2={PAD.left + chartW}
-                y2={y}
-                stroke={PING_COLORS.grid}
-                strokeWidth={ratio === 1 ? 1 : 0.5}
-                strokeDasharray={ratio === 1 ? "none" : "2,2"}
-              />
-            </g>
-          );
-        })}
-
-        {/* Grid vertikal X-axis */}
-        {xTicks.map((tick, i) => (
+      {/* Grid Lines Horizontal & Label Y Kiri (RTT) */}
+      {yTicksRtt.map(({ val, y }, i) => (
+        <g key={`rtt-${i}`}>
+          {/* Garis Grid Halus */}
           <line
-            key={i}
-            x1={PAD.left + tick.frac * chartW}
-            y1={PAD.top}
-            x2={PAD.left + tick.frac * chartW}
-            y2={PAD.top + chartH}
-            stroke={PING_COLORS.grid}
-            strokeWidth="0.5"
-            strokeDasharray="2,2"
+            x1={PAD.left}
+            y1={y}
+            x2={PAD.left + chartW}
+            y2={y}
+            stroke={THEME.gridLine}
+            strokeWidth={1}
           />
-        ))}
-
-        {/* Label X-axis */}
-        {xTicks.map((tick, i) => (
+          {/* Label Angka Kiri */}
           <text
-            key={i}
-            x={PAD.left + tick.frac * chartW}
-            y={PAD.top + chartH + 18}
-            textAnchor="middle"
-            fill={PING_COLORS.axisText}
+            x={PAD.left - 8}
+            y={y + 4}
+            textAnchor="end"
+            fill={THEME.text}
             fontSize="10"
-            fontFamily="JetBrains Mono, monospace"
+            fontFamily="Arial, sans-serif"
           >
-            {tick.label}
+            {val.toFixed(0)}
           </text>
-        ))}
+        </g>
+      ))}
 
-        {/* Loss Area Fill (di bawah) */}
-        {lossFillPath && (
-          <path d={lossFillPath} fill={PING_COLORS.lossFill} />
-        )}
-
-        {/* RTT Area Fill (di atas) */}
-        {rttFillPath && (
-          <path d={rttFillPath} fill={PING_COLORS.rttFill} />
-        )}
-
-        {/* Loss Line */}
-        {lossLinePath && (
-          <path
-            d={lossLinePath}
-            fill="none"
-            stroke={PING_COLORS.lossLine}
-            strokeWidth={1.5}
-            opacity={0.85}
-          />
-        )}
-
-        {/* RTT Line */}
-        {rttLinePath && (
-          <path
-            d={rttLinePath}
-            fill="none"
-            stroke={PING_COLORS.rttLine}
-            strokeWidth={1.5}
-            opacity={0.85}
-          />
-        )}
-
-        {/* Border */}
-        <rect
-          x={PAD.left}
-          y={PAD.top}
-          width={chartW}
-          height={chartH}
-          fill="none"
-          stroke={PING_COLORS.grid}
-          strokeWidth="1"
-        />
-
-        {/* Axis labels - Kiri (RTT ms) */}
+      {/* Label Y Kanan (Loss) */}
+      {yTicksLoss.map(({ val, y }, i) => (
         <text
-          x={PAD.left - 10}
-          y={PAD.top}
-          textAnchor="end"
-          fill={PING_COLORS.rttLine}
-          fontSize="10"
-          fontFamily="JetBrains Mono, monospace"
-        >
-          RTT (ms)
-        </text>
-
-        {/* Axis labels - Kanan (Loss %) */}
-        <text
-          x={PAD.left + chartW + 10}
-          y={PAD.top}
+          key={`loss-${i}`}
+          x={PAD.left + chartW + 8}
+          y={y + 4}
           textAnchor="start"
-          fill={PING_COLORS.lossLine}
+          fill={THEME.text}
           fontSize="10"
-          fontFamily="JetBrains Mono, monospace"
+          fontFamily="Arial, sans-serif"
         >
-          Loss (%)
+          {val.toFixed(0)}
         </text>
+      ))}
 
-        {/* Y-Axis Labels - Kiri (RTT) */}
-        {[0, 25, 50, 75, 100].map((val) => {
-          const y = rttToY(val);
-          if (y < PAD.top || y > PAD.top + chartH) return null;
-          return (
+      {/* X-Axis Ticks & Labels */}
+      {xTicks.map(({ ts, x }, i) => {
+        const isLast = i === xTicks.length - 1;
+        return (
+          <g key={i}>
+            {/* Tick mark kecil di bawah */}
+            <line
+              x1={x}
+              y1={PAD.top + chartH}
+              x2={x}
+              y2={PAD.top + chartH + 5}
+              stroke={THEME.gridLine}
+              strokeWidth={1}
+            />
+            {/* Label Waktu */}
             <text
-              key={`rtt-${val}`}
-              x={PAD.left - 8}
-              y={y + 4}
-              textAnchor="end"
-              fill={PING_COLORS.rttLine}
-              fontSize="9"
-              fontFamily="JetBrains Mono, monospace"
+              x={x}
+              y={PAD.top + chartH + 18}
+              textAnchor={isLast ? "end" : "middle"}
+              fill={THEME.text}
+              fontSize="10"
+              fontFamily="Arial, sans-serif"
             >
-              {val}
+              {formatXLabel(ts, isLast)}
             </text>
-          );
-        })}
+          </g>
+        );
+      })}
 
-        {/* Y-Axis Labels - Kanan (Loss) */}
-        {[0, 25, 50, 75, 100].map((val) => {
-          const y = lossToY(val);
-          if (y < PAD.top || y > PAD.top + chartH) return null;
-          return (
-            <text
-              key={`loss-${val}`}
-              x={PAD.left + chartW + 8}
-              y={y + 4}
-              textAnchor="start"
-              fill={PING_COLORS.lossLine}
-              fontSize="9"
-              fontFamily="JetBrains Mono, monospace"
-            >
-              {val}
-            </text>
-          );
-        })}
-      </svg>
-    </div>
+      {/* --- Judul Sumbu Y di Ujung Atas --- */}
+
+      {/* Judul Kiri: Latency (ms) */}
+      <text
+        x={PAD.left - 8}
+        y={PAD.top - 14}
+        textAnchor="end"
+        fill={THEME.axisTitle}
+        fontSize="10"
+        fontWeight="bold"
+        fontFamily="Arial, sans-serif"
+      >
+        Latency (ms)
+      </text>
+
+      {/* Judul Kanan: Loss (%) */}
+      <text
+        x={width - PAD.right + 8}
+        y={PAD.top - 14}
+        textAnchor="start"
+        fill={THEME.axisTitle}
+        fontSize="10"
+        fontWeight="bold"
+        fontFamily="Arial, sans-serif"
+      >
+        Loss (%)
+      </text>
+
+      {/* --- Data Lines --- */}
+      {/* Garis Loss (Merah) */}
+      <path
+        d={pathLoss}
+        fill="none"
+        stroke={PING_COLORS.lossLine}
+        strokeWidth={2}
+        opacity={0.8}
+      />
+      {/* Garis RTT (Hijau - di atas merah) */}
+      <path
+        d={pathRtt}
+        fill="none"
+        stroke={PING_COLORS.rttLine}
+        strokeWidth={2}
+      />
+
+      {/* Border Kotak Luar Grafik */}
+      <rect
+        x={PAD.left}
+        y={PAD.top}
+        width={chartW}
+        height={chartH}
+        fill="none"
+        stroke={THEME.gridLine}
+        strokeWidth={1}
+      />
+    </svg>
   );
 }

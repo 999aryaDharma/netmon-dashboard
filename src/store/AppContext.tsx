@@ -140,13 +140,36 @@ const LATENCY_COLORS = {
   out: "#FF0000", // Loss
 };
 
-function createDefaultSites(name: string, index: number): { loadSite: Site; latencySite: Site } {
+// Helper function untuk merge data tanpa duplikasi timestamp
+function mergeData(
+  existing: { timestamp: number; value: number }[],
+  newData: { timestamp: number; value: number }[]
+): { timestamp: number; value: number }[] {
+  if (!existing || existing.length === 0) return newData;
+  if (!newData || newData.length === 0) return existing;
+
+  // Create map of existing timestamps for quick lookup
+  const existingMap = new Map(existing.map(d => [d.timestamp, d]));
+
+  // Add new data points that don't exist yet
+  const merged = [...existing];
+  newData.forEach(point => {
+    if (!existingMap.has(point.timestamp)) {
+      merged.push(point);
+    }
+  });
+
+  // Sort by timestamp
+  return merged.sort((a, b) => a.timestamp - b.timestamp);
+}
+
+function createDefaultSites(name: string, index: number, existingSites?: Site[]): { loadSite: Site; latencySite: Site } {
   // Generate data relatif terhadap waktu sekarang (bukan waktu fixed)
   // Ini memastikan data selalu dalam range saat aplikasi dibuka
   const now = Date.now();
   const dayAgo = now - 24 * 3_600_000; // 24 jam yang lalu dari sekarang
   const interval = 15 * 60 * 1000; // 15 menit per point
-  const pingData = generatePingData(dayAgo, now, { baseRtt: 20, variance: 10, seed: index * 100 }, interval);
+  const pingData = generatePingData(dayAgo, now, { baseRtt: 15, variance: 3, seed: index * 100 }, interval);
 
   // Tentukan axisMax berdasarkan tipe site (dari nama)
   const isBackbone = name.toLowerCase().includes("backbone") ||
@@ -169,42 +192,51 @@ function createDefaultSites(name: string, index: number): { loadSite: Site; late
     axisMaxLoad = 100_000_000; // Default 100 Mbps
   }
 
+  // Check if existing sites exist and preserve their data
+  const existingLoadId = `load-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`;
+  const existingLatencyId = `latency-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`;
+
+  const existingLoad = existingSites?.find(s => s.id === existingLoadId);
+  const existingLatency = existingSites?.find(s => s.id === existingLatencyId);
+
   // Site untuk Load monitoring (traffic)
   const loadSite: Site = {
-    id: `load-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`,
+    id: existingLoadId,
     name: `${name} (Load)`,
     type: "traffic",
     unit: "bps",
     axisMax: axisMaxLoad,
     interfaces: [
       {
-        id: `iface-${index}-1`,
+        id: existingLoad?.interfaces[0]?.id || `iface-${index}-1`,
         name: "eth0",
         colorIn: INTERFACE_COLORS[index % INTERFACE_COLORS.length].in,
         colorOut: INTERFACE_COLORS[index % INTERFACE_COLORS.length].out,
-        dataIn: generateSmoothData(dayAgo, now, axisMaxLoad * 0.1, axisMaxLoad * 0.4, index * 100, interval),
-        dataOut: generateSmoothData(dayAgo, now, axisMaxLoad * 0.05, axisMaxLoad * 0.2, index * 100 + 50, interval),
+        // MERGE data: existing data + new generated data (tanpa duplikasi)
+        dataIn: mergeData(existingLoad?.interfaces[0]?.dataIn || [], generateSmoothData(dayAgo, now, axisMaxLoad * 0.1, axisMaxLoad * 0.4, index * 100, interval)),
+        dataOut: mergeData(existingLoad?.interfaces[0]?.dataOut || [], generateSmoothData(dayAgo, now, axisMaxLoad * 0.05, axisMaxLoad * 0.2, index * 100 + 50, interval)),
       },
     ],
   };
 
   // Site untuk Latency monitoring (ping)
   const latencySite: Site = {
-    id: `latency-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`,
+    id: existingLatencyId,
     name: `${name} (Latency)`,
     type: "ping",
     unit: "ms",
     axisMax: 100, // 100ms max untuk RTT
     interfaces: [
       {
-        id: `latency-iface-${index}-1`,
+        id: existingLatency?.interfaces[0]?.id || `latency-iface-${index}-1`,
         name: "ping",
         colorIn: LATENCY_COLORS.in,
         colorOut: LATENCY_COLORS.out,
         dataIn: [],
         dataOut: [],
-        dataRtt: pingData.rtt,
-        dataLoss: pingData.loss,
+        // MERGE data: existing data + new generated data (tanpa duplikasi)
+        dataRtt: mergeData(existingLatency?.interfaces[0]?.dataRtt || [], pingData.rtt),
+        dataLoss: mergeData(existingLatency?.interfaces[0]?.dataLoss || [], pingData.loss),
       },
     ],
   };
@@ -242,60 +274,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
 
         sites = defaultSites;
-      } else {
-        // Check if data is stale (older than 24 hours from now)
-        // If so, regenerate data for all sites
-        const now = Date.now();
-        const dayAgo = now - 24 * 3_600_000;
-        const hasStaleData = sites.some(site => {
-          const allData = [
-            ...site.interfaces.flatMap(i => i.dataIn),
-            ...site.interfaces.flatMap(i => i.dataOut),
-            ...site.interfaces.flatMap(i => i.dataRtt || []),
-            ...site.interfaces.flatMap(i => i.dataLoss || []),
-          ];
-          if (allData.length === 0) return true;
-          const latestTs = Math.max(...allData.map(d => d.timestamp));
-          return latestTs < dayAgo;
-        });
-
-        if (hasStaleData) {
-          console.log("Deteksi data lama, regenerate...");
-          const refreshedSites: Site[] = [];
-          DEFAULT_SITE_NAMES.forEach((name, index) => {
-            try {
-              const { loadSite, latencySite } = createDefaultSites(name, index);
-              // Preserve existing site ID if found
-              const existingLoad = sites.find(s => s.id === `load-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`);
-              const existingLatency = sites.find(s => s.id === `latency-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`);
-
-              if (existingLoad) {
-                loadSite.id = existingLoad.id;
-              }
-              if (existingLatency) {
-                latencySite.id = existingLatency.id;
-              }
-
-              refreshedSites.push(loadSite);
-              refreshedSites.push(latencySite);
-            } catch (err) {
-              console.error(`Error regenerating site "${name}":`, err);
-            }
-          });
-
-          // Clear old data and save new
-          await dbClearAll();
-          for (const site of refreshedSites) {
-            try {
-              await dbPutSite(site);
-            } catch (err) {
-              console.error(`Error saving refreshed site "${site.name}":`, err);
-            }
-          }
-
-          sites = refreshedSites;
-        }
       }
+      // NOTE: Auto-regenerate feature DISABLED untuk reporting purposes.
+      // Data tidak akan dihapus otomatis, user harus manual regenerate jika mau update data.
+      // Ini mencegah hilangnya data manual yang sudah di-input untuk laporan.
 
       dispatch({ type: "SET_SITES", payload: sites });
     } catch (err) {

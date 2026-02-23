@@ -121,6 +121,13 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
   const [genStart, setGenStart] = useState(weekAgo.toISOString().slice(0, 16));
   const [genEnd, setGenEnd] = useState(now.toISOString().slice(0, 16));
 
+  // State untuk Input Manual Data Point
+  const [manualTime, setManualTime] = useState(now.toISOString().slice(0, 16));
+  const [manualValIn, setManualValIn] = useState<number>(0);
+  const [manualValOut, setManualValOut] = useState<number>(0);
+  const [manualRtt, setManualRtt] = useState<number>(0);
+  const [manualLoss, setManualLoss] = useState<number>(0);
+
   const setField = (k: keyof Site, v: unknown) =>
     setForm((f) => ({ ...f, [k]: v }));
 
@@ -220,6 +227,32 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
       }));
     }
     alert("Data for all interfaces generated! Remember to click 'Save'.");
+  };
+
+  // Fungsi untuk menambahkan manual data point
+  const addManualData = () => {
+    if (!selectedIface) return;
+    const ts = new Date(manualTime).getTime();
+    if (isNaN(ts)) return alert("Invalid time format");
+
+    const updated = { ...selectedIface };
+
+    if (form.type === "ping") {
+      updated.dataRtt = [...(updated.dataRtt || []), { timestamp: ts, value: manualRtt }]
+        .sort((a, b) => a.timestamp - b.timestamp);
+      updated.dataLoss = [...(updated.dataLoss || []), { timestamp: ts, value: manualLoss }]
+        .sort((a, b) => a.timestamp - b.timestamp);
+    } else {
+      updated.dataIn = [...(updated.dataIn || []), { timestamp: ts, value: manualValIn }]
+        .sort((a, b) => a.timestamp - b.timestamp);
+      if (form.type === "traffic") {
+        updated.dataOut = [...(updated.dataOut || []), { timestamp: ts, value: manualValOut }]
+          .sort((a, b) => a.timestamp - b.timestamp);
+      }
+    }
+
+    updateIface(updated);
+    alert("Data point added! Remember to click 'Save' below.");
   };
 
   const handleSave = async () => {
@@ -344,7 +377,7 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                   style={inp}
                 >
                   <option value="traffic">Traffic (Bidirectional)</option>
-                  <option value="latency">Latency (Single upward)</option>
+                  <option value="latency">Load Single Metric</option>
                   <option value="ping">Ping (RTT + Loss)</option>
                 </select>
               </div>
@@ -679,6 +712,91 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                       </>
                     )}
                   </div>
+
+                  {/* --- BLOK MANUAL INPUT --- */}
+                  <div
+                    style={{
+                      marginTop: "16px",
+                      paddingTop: "12px",
+                      borderTop: "1px dashed #333",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    <span style={{ ...lbl, color: "#33cc00", textTransform: "none", fontWeight: 600 }}>
+                      ⚡ Insert Single Data Point (Manual)
+                    </span>
+                    <input
+                      type="datetime-local"
+                      value={manualTime}
+                      onChange={(e) => setManualTime(e.target.value)}
+                      style={inp}
+                    />
+
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                      {form.type === "ping" ? (
+                        <>
+                          <div>
+                            <span style={lbl}>RTT (ms)</span>
+                            <input
+                              type="number"
+                              value={manualRtt}
+                              onChange={(e) => setManualRtt(+e.target.value)}
+                              style={{ ...inp, color: "#00ff88" }}
+                            />
+                          </div>
+                          <div>
+                            <span style={lbl}>Loss (%)</span>
+                            <input
+                              type="number"
+                              value={manualLoss}
+                              onChange={(e) => setManualLoss(+e.target.value)}
+                              style={{ ...inp, color: "#ff4444" }}
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <span style={lbl}>IN Value ({form.unit})</span>
+                            <input
+                              type="number"
+                              value={manualValIn}
+                              onChange={(e) => setManualValIn(+e.target.value)}
+                              style={{ ...inp, color: selectedIface.colorIn }}
+                            />
+                          </div>
+                          {form.type === "traffic" && (
+                            <div>
+                              <span style={lbl}>OUT Value ({form.unit})</span>
+                              <input
+                                type="number"
+                                value={manualValOut}
+                                onChange={(e) => setManualValOut(+e.target.value)}
+                                style={{ ...inp, color: selectedIface.colorOut }}
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+
+                    <button
+                      onClick={addManualData}
+                      style={{
+                        ...ghostBtn,
+                        color: "#33cc00",
+                        borderColor: "#004400",
+                        background: "#051105",
+                        marginTop: "4px",
+                      }}
+                    >
+                      + Add Manual Point
+                    </button>
+                  </div>
+                  {/* --- AKHIR BLOK MANUAL INPUT --- */}
+
                   {form.interfaces.length > 1 && (
                     <button
                       onClick={() => removeIface(selectedIface.id)}

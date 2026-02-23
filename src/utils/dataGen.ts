@@ -98,10 +98,10 @@ export function generatePingData(
   const rtt: { timestamp: number; value: number }[] = [];
   const loss: { timestamp: number; value: number }[] = [];
 
-  const baseRtt = options?.baseRtt ?? 20; // ms
-  const variance = options?.variance ?? 10;
-  const spikeChance = options?.spikeChance ?? 0.05;
-  const lossChance = options?.lossChance ?? 0.02;
+  const baseRtt = options?.baseRtt ?? 15; // ms - lebih rendah untuk stabilitas
+  const variance = options?.variance ?? 3; // Variance KECIL untuk stabilitas
+  const spikeChance = options?.spikeChance ?? 0.02; // Sangat jarang spike
+  const lossChance = options?.lossChance ?? 0.01; // Sangat jarang loss
 
   let s = options?.seed || Math.floor(Math.random() * 10000);
 
@@ -114,28 +114,41 @@ export function generatePingData(
     const date = new Date(ts);
     const hour = date.getHours();
 
-    // Pola harian: RTT lebih tinggi di jam sibuk
+    // Pola harian: variasi SANGAT KECIL untuk stabilitas
     let timeFactor = 1;
     if (hour >= 9 && hour <= 21) {
-      timeFactor = 1.2 + 0.3 * Math.sin((hour - 9) / 12 * Math.PI);
+      // Hanya 10-15% variasi di jam sibuk
+      timeFactor = 1.05 + 0.05 * Math.sin((hour - 9) / 12 * Math.PI);
     }
 
-    // Random noise
-    const noise = (rand() - 0.5) * variance;
+    // Random noise - SANGAT KECIL untuk stabilitas
+    const noise = (rand() - 0.5) * variance; // +/- 1.5ms max
 
-    // Spike occasional
+    // Spike - SANGAT JARANG dan kecil
     let spike = 0;
     if (rand() < spikeChance) {
-      spike = rand() * 100 + 50; // Spike 50-150ms
+      spike = rand() * 20 + 10; // Spike kecil 10-30ms saja
     }
 
-    // Packet loss event
+    // Packet loss event - NILAI SANGAT KECIL (network stabil)
     let lossValue = 0;
     if (rand() < lossChance) {
-      lossValue = Math.min(100, rand() * 50 + 10); // Loss 10-60%
+      // Loss values: mostly 0.01-0.5%, very rarely up to 2%
+      const lossRand = rand();
+      if (lossRand < 0.8) {
+        // 80% chance: 0.01% - 0.5% (hampir tidak terlihat)
+        lossValue = rand() * 0.49 + 0.01;
+      } else if (lossRand < 0.95) {
+        // 15% chance: 0.5% - 1.5% (masih stabil)
+        lossValue = rand() * 1 + 0.5;
+      } else {
+        // 5% chance: 1.5% - 3% (spike sangat jarang)
+        lossValue = rand() * 1.5 + 1.5;
+      }
     }
 
-    const rttValue = Math.max(5, baseRtt * timeFactor + noise + spike);
+    // RTT value - STABIL di sekitar baseRtt
+    const rttValue = Math.max(8, baseRtt + noise + spike);
 
     rtt.push({ timestamp: ts, value: rttValue });
     loss.push({ timestamp: ts, value: lossValue });

@@ -30,9 +30,14 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSite, setSelectedSite] = useState<string>("");
   const [showDropdown, setShowDropdown] = useState(false);
-  const [graphFilter, setGraphFilter] = useState<"all" | "load" | "latency">("all");
+  const [graphFilter, setGraphFilter] = useState<"all" | "load" | "latency">(
+    "all",
+  );
   const [showAllSites, setShowAllSites] = useState(false);
-  const [detailChart, setDetailChart] = useState<{ site: Site; chartType: "load" | "latency" } | null>(null);
+  const [detailChart, setDetailChart] = useState<{
+    site: Site;
+    chartType: "load" | "latency";
+  } | null>(null);
   const [showLegend, setShowLegend] = useState(true);
   const searchRef = useRef<HTMLDivElement>(null);
 
@@ -70,7 +75,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
   // Format functions for legend
   const formatRate = (v: number | null): string => {
     if (v === null || isNaN(v)) return "  -nan bps";
-    if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(2).padStart(6, " ")}Mbps`;
+    if (v >= 1_000_000)
+      return `${(v / 1_000_000).toFixed(2).padStart(6, " ")}Mbps`;
     if (v >= 1_000) return `${(v / 1_000).toFixed(2).padStart(6, " ")}kbps`;
     return `${v.toFixed(2).padStart(6, " ")} bps`;
   };
@@ -79,32 +85,39 @@ export function Dashboard({ onLogout }: DashboardProps) {
     if (avgBps === null || isNaN(avgBps)) return "  -nan B";
     const durationSeconds = (timeRange.end - timeRange.start) / 1000;
     const totalBytes = (avgBps * durationSeconds) / 8;
-    if (totalBytes >= 1_099_511_627_776) return `${(totalBytes / 1_099_511_627_776).toFixed(2).padStart(6, " ")}TB`;
-    if (totalBytes >= 1_073_741_824) return `${(totalBytes / 1_073_741_824).toFixed(2).padStart(6, " ")}GB`;
-    if (totalBytes >= 1_048_576) return `${(totalBytes / 1_048_576).toFixed(2).padStart(6, " ")}MB`;
-    if (totalBytes >= 1_024) return `${(totalBytes / 1_024).toFixed(2).padStart(6, " ")}KB`;
+    if (totalBytes >= 1_099_511_627_776)
+      return `${(totalBytes / 1_099_511_627_776).toFixed(2).padStart(6, " ")}TB`;
+    if (totalBytes >= 1_073_741_824)
+      return `${(totalBytes / 1_073_741_824).toFixed(2).padStart(6, " ")}GB`;
+    if (totalBytes >= 1_048_576)
+      return `${(totalBytes / 1_048_576).toFixed(2).padStart(6, " ")}MB`;
+    if (totalBytes >= 1_024)
+      return `${(totalBytes / 1_024).toFixed(2).padStart(6, " ")}KB`;
     return `${totalBytes.toFixed(2).padStart(6, " ")}B`;
   };
 
   const formatRtt = (v: number | null): string => {
-    if (v === null || isNaN(v) || v === 0) return "  -nan ms";
+    if (v === null || isNaN(v) || v === 0) return "   0.00 ms";
     if (v >= 1000) return `${(v / 1000).toFixed(2).padStart(6, " ")}s`;
     return `${v.toFixed(2).padStart(6, " ")}ms`;
   };
 
   const formatLoss = (v: number | null): string => {
-    if (v === null || isNaN(v) || v === 0) return "  -nan %";
+    if (v === null || isNaN(v) || v === 0) return "   0.00 %";
     return `${v.toFixed(2).padStart(6, " ")} %`;
   };
 
   const stats = (data: { timestamp: number; value: number }[]) => {
-    const inRange = data.filter((d) => d.timestamp >= timeRange.start && d.timestamp <= timeRange.end);
-    if (!inRange.length) return { cur: null, avg: null, max: null };
+    const inRange = data.filter(
+      (d) => d.timestamp >= timeRange.start && d.timestamp <= timeRange.end,
+    );
+    if (!inRange.length) return { cur: null, avg: null, max: null, min: null };
     const vals = inRange.map((d) => d.value);
     return {
       cur: vals[vals.length - 1],
       avg: vals.reduce((a, b) => a + b, 0) / vals.length,
       max: Math.max(...vals),
+      min: Math.min(...vals), // <-- Tambahkan ini
     };
   };
 
@@ -115,7 +128,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
     // Apply search filter
     if (searchQuery.trim() !== "") {
       result = result.filter((site) =>
-        site.name.toLowerCase().includes(searchQuery.toLowerCase())
+        site.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
@@ -135,15 +148,19 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const sitesToDisplay = selectedSite
     ? sites.filter((s) => s.id === selectedSite)
     : showAllSites
-    ? filteredSites
-    : filteredSites.slice(0, 12);
+      ? filteredSites
+      : filteredSites.slice(0, 12);
 
-  const hasMoreSites = filteredSites.length > 12 && !selectedSite && !showAllSites;
+  const hasMoreSites =
+    filteredSites.length > 12 && !selectedSite && !showAllSites;
 
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+      if (
+        searchRef.current &&
+        !searchRef.current.contains(event.target as Node)
+      ) {
         setShowDropdown(false);
       }
     }
@@ -204,7 +221,14 @@ export function Dashboard({ onLogout }: DashboardProps) {
             }}
             onClick={() => setShowDropdown(!showDropdown)}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#666"
+              strokeWidth="2"
+            >
               <circle cx="11" cy="11" r="8" />
               <path d="m21 21-4.35-4.35" />
             </svg>
@@ -250,7 +274,14 @@ export function Dashboard({ onLogout }: DashboardProps) {
                 ×
               </button>
             ) : (
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#666"
+                strokeWidth="2"
+              >
                 <path d="m6 9 6 6 6-6" />
               </svg>
             )}
@@ -282,7 +313,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     fontSize: "12px",
                   }}
                 >
-                  {searchQuery ? `No sites matching "${searchQuery}"` : "No sites available"}
+                  {searchQuery
+                    ? `No sites matching "${searchQuery}"`
+                    : "No sites available"}
                 </div>
               ) : (
                 filteredSites.map((site) => (
@@ -296,7 +329,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     style={{
                       padding: "10px 16px",
                       cursor: "pointer",
-                      background: selectedSite === site.id ? "#0a2a1a" : "transparent",
+                      background:
+                        selectedSite === site.id ? "#0a2a1a" : "transparent",
                       color: selectedSite === site.id ? "#33cc00" : "#ccc",
                       fontSize: "12px",
                       borderBottom: "1px solid #222",
@@ -407,7 +441,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
           onClick={() => setGraphFilter("all")}
           style={{
             background: graphFilter === "all" ? "#0a2a1a" : "none",
-            border: graphFilter === "all" ? "1px solid #33cc00" : "1px solid #333",
+            border:
+              graphFilter === "all" ? "1px solid #33cc00" : "1px solid #333",
             borderRadius: "3px",
             color: graphFilter === "all" ? "#33cc00" : "#888",
             fontFamily: "JetBrains Mono, monospace",
@@ -422,7 +457,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
           onClick={() => setGraphFilter("load")}
           style={{
             background: graphFilter === "load" ? "#0a2a1a" : "none",
-            border: graphFilter === "load" ? "1px solid #33cc00" : "1px solid #333",
+            border:
+              graphFilter === "load" ? "1px solid #33cc00" : "1px solid #333",
             borderRadius: "3px",
             color: graphFilter === "load" ? "#33cc00" : "#888",
             fontFamily: "JetBrains Mono, monospace",
@@ -437,7 +473,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
           onClick={() => setGraphFilter("latency")}
           style={{
             background: graphFilter === "latency" ? "#0a2a1a" : "none",
-            border: graphFilter === "latency" ? "1px solid #33cc00" : "1px solid #333",
+            border:
+              graphFilter === "latency"
+                ? "1px solid #33cc00"
+                : "1px solid #333",
             borderRadius: "3px",
             color: graphFilter === "latency" ? "#33cc00" : "#888",
             fontFamily: "JetBrains Mono, monospace",
@@ -545,7 +584,12 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     timeRange={timeRange}
                     onEdit={() => setEditSite(site)}
                     chartType={site.type === "ping" ? "latency" : "load"}
-                    onOpenDetail={() => openDetailChart(site, site.type === "ping" ? "latency" : "load")}
+                    onOpenDetail={() =>
+                      openDetailChart(
+                        site,
+                        site.type === "ping" ? "latency" : "load",
+                      )
+                    }
                   />
                 </div>
               ))}
@@ -656,7 +700,11 @@ function GridSiteCard({
       }}
       onClick={onOpenDetail}
     >
-      <ResponsiveChart site={site} timeRange={timeRange} chartType={chartType} />
+      <ResponsiveChart
+        site={site}
+        timeRange={timeRange}
+        chartType={chartType}
+      />
     </div>
   );
 }
@@ -739,6 +787,28 @@ function topBtn(color: string, bg: string): React.CSSProperties {
 // DetailChartModal - Full detail view
 // ============================================
 
+// ============================================
+// DetailChartModal - Full detail view (Observium/LibreNMS Style)
+// ============================================
+
+// Komponen bantuan untuk menggambar grafik mini di tombol atas
+function MiniSparkline() {
+  return (
+    <svg width="80" height="30" style={{ marginTop: "4px" }}>
+      <path
+        d="M 0 25 L 10 20 L 20 28 L 30 15 L 40 22 L 50 10 L 60 18 L 70 5 L 80 15 L 80 30 L 0 30 Z"
+        fill="rgba(255,255,255,0.1)"
+      />
+      <polyline
+        points="0,25 10,20 20,28 30,15 40,22 50,10 60,18 70,5 80,15"
+        fill="none"
+        stroke="rgba(255,255,255,0.6)"
+        strokeWidth="1"
+      />
+    </svg>
+  );
+}
+
 function DetailChartModal({
   site,
   chartType,
@@ -758,10 +828,36 @@ function DetailChartModal({
   formatVol: (v: number | null) => string;
   formatRtt: (v: number | null) => string;
   formatLoss: (v: number | null) => string;
-  stats: (data: { timestamp: number; value: number }[]) => { cur: number | null; avg: number | null; max: number | null };
+  stats: (data: { timestamp: number; value: number }[]) => {
+    cur: number | null;
+    avg: number | null;
+    max: number | null;
+    min: number | null;
+  };
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(900);
+  const [width, setWidth] = useState(1000);
+
+  // Local state untuk custom date - TIDAK mempengaruhi global state
+  const [localStart, setLocalStart] = useState(timeRange.start);
+  const [localEnd, setLocalEnd] = useState(timeRange.end);
+
+  const handleUpdate = () => {
+    const start = new Date(localStart).getTime();
+    const end = new Date(localEnd).getTime();
+    if (isNaN(start) || isNaN(end) || start >= end) {
+      alert("Invalid date range");
+      return;
+    }
+    // Hanya update local state, TIDAK panggil setTimeRange global
+    // Chart akan re-render dengan localStart/localEnd yang baru
+  };
+
+  // Format datetime untuk input
+  const formatDateTime = (ts: number) => {
+    const d = new Date(ts);
+    return d.toISOString().slice(0, 16);
+  };
 
   useEffect(() => {
     const el = ref.current;
@@ -773,40 +869,19 @@ function DetailChartModal({
     return () => ro.disconnect();
   }, []);
 
-  // Calculate stats for legend
+  const PRESETS = [
+    "6 Hours",
+    "24 Hours",
+    "48 Hours",
+    "One Week",
+    "Two Weeks",
+    "One Month",
+    "Two Months",
+    "One Year",
+    "Two Years",
+  ];
+
   const iface = site.interfaces[0];
-  const loadStats = {
-    in: stats(chartType === "load" ? iface.dataIn : []),
-    out: stats(chartType === "load" ? iface.dataOut : []),
-  };
-  const pingStats = {
-    rtt: stats(chartType === "latency" ? (iface.dataRtt || []) : []),
-    loss: stats(chartType === "latency" ? (iface.dataLoss || []) : []),
-  };
-
-  // Calculate totals
-  let totalInAvg = 0, totalInMax = 0, totalOutAvg = 0, totalOutMax = 0;
-  let totalRttAvg = 0, totalRttMax = 0, totalLossAvg = 0, totalLossMax = 0;
-
-  if (chartType === "load") {
-    site.interfaces.forEach((i) => {
-      const si = stats(i.dataIn);
-      const so = stats(i.dataOut);
-      totalInAvg += si.avg || 0;
-      totalInMax += si.max || 0;
-      totalOutAvg += so.avg || 0;
-      totalOutMax += so.max || 0;
-    });
-  } else {
-    site.interfaces.forEach((i) => {
-      const sRtt = stats(i.dataRtt || []);
-      const sLoss = stats(i.dataLoss || []);
-      totalRttAvg += sRtt.avg || 0;
-      totalRttMax += sRtt.max || 0;
-      totalLossAvg += sLoss.avg || 0;
-      totalLossMax += sLoss.max || 0;
-    });
-  }
 
   return (
     <div
@@ -819,467 +894,387 @@ function DetailChartModal({
         alignItems: "center",
         justifyContent: "center",
         zIndex: 2000,
-        fontFamily: "JetBrains Mono, monospace",
+        fontFamily: "Arial, sans-serif", // NOC tools usually use standard sans-serif here
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#141414",
-          border: "1px solid #333",
+          background: "#2b3036", // Warna dark-slate khas Observium
           borderRadius: "4px",
           width: "95%",
-          maxWidth: "1200px",
-          maxHeight: "90vh",
+          maxWidth: "1300px",
+          maxHeight: "95vh",
           overflowY: "auto",
           boxShadow: "0 16px 64px rgba(0,0,0,0.9)",
+          color: "#c8ced6",
         }}
       >
-        {/* Chart Header */}
+        {/* 1. Header Bar */}
         <div
           style={{
-            padding: "16px 24px",
-            background: "#1e1e1e",
-            borderBottom: "1px solid #333",
+            padding: "8px 16px",
+            background: "#363c45",
+            borderBottom: "1px solid #1a1e23",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
           }}
         >
-          <h2
-            style={{
-              fontSize: "14px",
-              color: "#33cc00",
-              margin: 0,
-              fontWeight: 600,
-            }}
+          <div
+            style={{ fontSize: "13px", fontWeight: "bold", color: "#e4e8ec" }}
           >
-            {site.name} - {chartType === "load" ? "LOAD" : "LATENCY"}
-          </h2>
-          <button
-            onClick={onClose}
-            style={{
-              background: "none",
-              border: "1px solid #444",
-              borderRadius: "3px",
-              color: "#888",
-              fontFamily: "JetBrains Mono, monospace",
-              fontSize: "11px",
-              padding: "4px 12px",
-              cursor: "pointer",
-            }}
-          >
-            Close
-          </button>
+            {site.name} :: {chartType === "latency" ? "Icmp Perf" : "Traffic"}
+          </div>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+            <select
+              style={{
+                background: "#2b3036",
+                color: "#c8ced6",
+                border: "1px solid #1a1e23",
+                padding: "4px 8px",
+                fontSize: "12px",
+                borderRadius: "2px",
+                outline: "none",
+              }}
+            >
+              <option>
+                {chartType === "latency" ? "Icmp Perf" : "Traffic"}
+              </option>
+            </select>
+            <button
+              onClick={onClose}
+              style={{
+                background: "none",
+                border: "none",
+                color: "#c8ced6",
+                cursor: "pointer",
+                fontSize: "16px",
+              }}
+            >
+              ×
+            </button>
+          </div>
         </div>
 
-        {/* Chart Area */}
-        <div ref={ref} style={{ padding: "24px", background: "#0b0f14" }}>
+        {/* 2. Sparklines Row */}
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            padding: "16px",
+            borderBottom: "1px solid #444c56",
+          }}
+        >
+          {PRESETS.map((label) => (
+            <div
+              key={label}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                cursor: "pointer",
+                opacity: 0.7,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: "12px",
+                  fontWeight: "bold",
+                  marginBottom: "4px",
+                  color: "#e4e8ec",
+                }}
+              >
+                {label}
+              </span>
+              <MiniSparkline />
+            </div>
+          ))}
+        </div>
+
+        {/* 3. Date Range Selector Row */}
+        <div
+          style={{
+            padding: "12px",
+            textAlign: "center",
+            background: "#2b3036",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              alignItems: "center",
+              fontSize: "12px",
+            }}
+          >
+            <span>From</span>
+            <input
+              type="datetime-local"
+              value={formatDateTime(localStart)}
+              onChange={(e) =>
+                setLocalStart(new Date(e.target.value).getTime())
+              }
+              style={{
+                padding: "4px 8px",
+                border: "1px solid #1a1e23",
+                borderRadius: "3px",
+                fontSize: "12px",
+                background: "#fff",
+                color: "#000",
+              }}
+            />
+            <span>To</span>
+            <input
+              type="datetime-local"
+              value={formatDateTime(localEnd)}
+              onChange={(e) => setLocalEnd(new Date(e.target.value).getTime())}
+              style={{
+                padding: "4px 8px",
+                border: "1px solid #1a1e23",
+                borderRadius: "3px",
+                fontSize: "12px",
+                background: "#fff",
+                color: "#000",
+              }}
+            />
+            <button
+              onClick={handleUpdate}
+              style={{
+                padding: "5px 16px",
+                background: "#4a535e",
+                border: "1px solid #1a1e23",
+                color: "#fff",
+                borderRadius: "3px",
+                cursor: "pointer",
+                fontSize: "12px",
+              }}
+            >
+              Update
+            </button>
+          </div>
+          <div
+            style={{ fontSize: "11px", color: "#9fb3c8", cursor: "pointer" }}
+          >
+            {/* <span style={{ textDecoration: "underline" }}>Hide Legend</span> |{" "}
+            <span style={{ textDecoration: "underline" }}>Show Previous</span> |{" "}
+            <span style={{ textDecoration: "underline" }}>
+              Show RRD Command
+            </span> */}
+          </div>
+        </div>
+
+        {/* 4. Main Chart Area */}
+        <div
+          ref={ref}
+          style={{
+            padding: "0 16px 16px 16px",
+            display: "flex",
+            justifyContent: "center",
+          }}
+        >
           {chartType === "latency" ? (
             <PingChart
               site={site}
-              startTs={timeRange.start}
-              endTs={timeRange.end}
+              startTs={localStart}
+              endTs={localEnd}
               width={width}
-              height={300}
+              height={350}
             />
           ) : (
             <Chart
               site={site}
-              startTs={timeRange.start}
-              endTs={timeRange.end}
+              startTs={localStart}
+              endTs={localEnd}
               width={width}
-              height={300}
+              height={350}
             />
           )}
         </div>
 
-        {/* Legend Table */}
+        {/* 5. Legend Table (RRDTool Exact Style) */}
         <div
           style={{
-            padding: "16px 24px",
-            background: "#141414",
-            borderTop: "1px solid #222",
+            padding: "0 16px 24px 76px",
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: "11px",
           }}
         >
-          {/* Header */}
+          {/* Legend Header */}
           <div
-            style={{
-              display: "flex",
-              color: "#AAAAAA",
-              marginBottom: "12px",
-              fontSize: "11px",
-              fontFamily: "JetBrains Mono, monospace",
-            }}
+            style={{ display: "flex", marginBottom: "4px", color: "#9fb3c8" }}
           >
-            <div style={{ width: "120px" }}></div>
-            <div style={{ width: "40px" }}></div>
-            <div style={{ width: "100px", textAlign: "right" }}>Current</div>
-            <div style={{ width: "100px", textAlign: "right" }}>Average</div>
-            <div style={{ width: "100px", textAlign: "right" }}>Maximum</div>
-            <div style={{ width: "100px", textAlign: "right" }}>Total</div>
+            <div style={{ width: "140px" }}>
+              {chartType === "latency" ? "Milliseconds" : "Traffic"}
+            </div>
+            <div style={{ width: "85px", textAlign: "left" }}>Cur</div>
+            <div style={{ width: "85px", textAlign: "left" }}>Min</div>
+            <div style={{ width: "85px", textAlign: "left" }}>Max</div>
+            <div style={{ width: "85px", textAlign: "left" }}>Avg</div>
           </div>
 
-          {/* Interface Rows */}
-          {chartType === "load" ? (
-            site.interfaces.map((iface) => {
-              const si = stats(iface.dataIn);
-              const so = stats(iface.dataOut);
-              return (
-                <React.Fragment key={iface.id}>
-                  {/* IN Row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      marginBottom: "4px",
-                      fontSize: "11px",
-                      fontFamily: "JetBrains Mono, monospace",
-                    }}
-                  >
+          {/* Legend Data Rows */}
+          {chartType === "latency"
+            ? site.interfaces.map((i) => {
+                const sRtt = stats(i.dataRtt || []);
+                const sLoss = stats(i.dataLoss || []);
+                return (
+                  <React.Fragment key={i.id}>
                     <div
                       style={{
-                        width: "120px",
-                        color: "#AAAAAA",
                         display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
+                        color: "#c8ced6",
+                        marginBottom: "2px",
                       }}
                     >
                       <div
                         style={{
-                          width: "12px",
-                          height: "12px",
-                          background: iface.colorIn,
-                        }}
-                      />
-                      {iface.name}
-                    </div>
-                    <div style={{ width: "40px", color: "#AAAAAA" }}>In</div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatRate(si.cur)}
-                    </div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatRate(si.avg)}
-                    </div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatRate(si.max)}
-                    </div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatVol(si.avg)}
-                    </div>
-                  </div>
-
-                  {/* OUT Row */}
-                  {site.type === "traffic" && (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        marginBottom: "8px",
-                        fontSize: "11px",
-                        fontFamily: "JetBrains Mono, monospace",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "120px",
+                          width: "140px",
                           display: "flex",
                           alignItems: "center",
-                          gap: "8px",
+                          gap: "6px",
                         }}
                       >
                         <div
                           style={{
-                            width: "12px",
-                            height: "12px",
-                            background: iface.colorOut,
+                            width: "8px",
+                            height: "8px",
+                            background: "#ccc",
+                          }}
+                        />{" "}
+                        {/* Kotak Putih/Abu */}
+                        RTT
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sRtt.cur !== null ? sRtt.cur.toFixed(2) : "0.00"}
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sRtt.min !== null ? sRtt.min.toFixed(2) : "0.00"}
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sRtt.max !== null ? sRtt.max.toFixed(2) : "0.00"}
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sRtt.avg !== null ? sRtt.avg.toFixed(2) : "0.00"}
+                      </div>
+                    </div>
+                    <div style={{ display: "flex", color: "#c8ced6" }}>
+                      <div
+                        style={{
+                          width: "140px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            background: "#ff4444",
+                          }}
+                        />{" "}
+                        {/* Kotak Merah */}
+                        Loss
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sLoss.cur !== null ? sLoss.cur.toFixed(2) : "0.00"}
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sLoss.min !== null ? sLoss.min.toFixed(2) : "0.00"}
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sLoss.max !== null ? sLoss.max.toFixed(2) : "0.00"}
+                      </div>
+                      <div style={{ width: "85px" }}>
+                        {sLoss.avg !== null ? sLoss.avg.toFixed(2) : "0.00"}
+                      </div>
+                    </div>
+                  </React.Fragment>
+                );
+              })
+            : site.interfaces.map((i) => {
+                const sIn = stats(i.dataIn || []);
+                const sOut = stats(i.dataOut || []);
+                return (
+                  <React.Fragment key={i.id}>
+                    <div
+                      style={{
+                        display: "flex",
+                        color: "#c8ced6",
+                        marginBottom: "2px",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: "140px",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: "8px",
+                            height: "8px",
+                            background: i.colorIn,
                           }}
                         />
+                        {i.name} In
                       </div>
-                      <div style={{ width: "40px", color: "#AAAAAA" }}>Out</div>
-                      <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                        {formatRate(so.cur)}
+                      <div style={{ width: "85px" }}>
+                        {formatRate(sIn.cur).trim()}
                       </div>
-                      <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                        {formatRate(so.avg)}
+                      <div style={{ width: "85px" }}>
+                        {formatRate(sIn.min).trim()}
                       </div>
-                      <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                        {formatRate(so.max)}
+                      <div style={{ width: "85px" }}>
+                        {formatRate(sIn.max).trim()}
                       </div>
-                      <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                        {formatVol(so.avg)}
+                      <div style={{ width: "85px" }}>
+                        {formatRate(sIn.avg).trim()}
                       </div>
                     </div>
-                  )}
-                </React.Fragment>
-              );
-            })
-          ) : (
-            site.interfaces.map((iface) => {
-              const sRtt = stats(iface.dataRtt || []);
-              const sLoss = stats(iface.dataLoss || []);
-              return (
-                <React.Fragment key={iface.id}>
-                  {/* RTT Row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      marginBottom: "4px",
-                      fontSize: "11px",
-                      fontFamily: "JetBrains Mono, monospace",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "120px",
-                        color: "#AAAAAA",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "12px",
-                          height: "12px",
-                          background: "#00ff88",
-                        }}
-                      />
-                      {iface.name}
-                    </div>
-                    <div style={{ width: "40px", color: "#00ff88" }}>RTT</div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatRtt(sRtt.cur)}
-                    </div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatRtt(sRtt.avg)}
-                    </div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatRtt(sRtt.max)}
-                    </div>
-                  </div>
-
-                  {/* Loss Row */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      marginBottom: "8px",
-                      fontSize: "11px",
-                      fontFamily: "JetBrains Mono, monospace",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "120px",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <div
-                        style={{
-                          width: "12px",
-                          height: "12px",
-                          background: "#ff4444",
-                        }}
-                      />
-                    </div>
-                    <div style={{ width: "40px", color: "#ff4444" }}>Loss</div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatLoss(sLoss.cur)}
-                    </div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatLoss(sLoss.avg)}
-                    </div>
-                    <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                      {formatLoss(sLoss.max)}
-                    </div>
-                  </div>
-                </React.Fragment>
-              );
-            })
-          )}
-
-          {/* Total Section */}
-          <div
-            style={{
-              marginTop: "16px",
-              paddingTop: "12px",
-              borderTop: "1px dashed #333",
-            }}
-          >
-            {chartType === "load" ? (
-              <>
-                {/* Total IN */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "4px",
-                    fontSize: "11px",
-                    fontFamily: "JetBrains Mono, monospace",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "120px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      color: "#AAAAAA",
-                    }}
-                  >
-                    <div style={{ width: "12px", height: "12px", background: "#FFFFFF" }} />
-                    Total
-                  </div>
-                  <div style={{ width: "40px", color: "#AAAAAA" }}>In</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>-</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRate(totalInAvg)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRate(totalInMax)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatVol(totalInAvg)}
-                  </div>
-                </div>
-
-                {/* Total OUT */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "4px",
-                    fontSize: "11px",
-                    fontFamily: "JetBrains Mono, monospace",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "120px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <div style={{ width: "12px", height: "12px", background: "#AAAAAA" }} />
-                  </div>
-                  <div style={{ width: "40px", color: "#AAAAAA" }}>Out</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>-</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRate(totalOutAvg)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRate(totalOutMax)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatVol(totalOutAvg)}
-                  </div>
-                </div>
-
-                {/* Total Agg */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "4px",
-                    fontSize: "11px",
-                    fontFamily: "JetBrains Mono, monospace",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "120px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <div style={{ width: "12px", height: "12px", background: "#FFFFFF" }} />
-                  </div>
-                  <div style={{ width: "40px", color: "#AAAAAA" }}>Agg</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>-</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRate(totalInAvg + totalOutAvg)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRate(totalInMax + totalOutMax)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatVol(totalInAvg + totalOutAvg)}
-                  </div>
-                </div>
-              </>
-            ) : (
-              <>
-                {/* Total RTT */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "4px",
-                    fontSize: "11px",
-                    fontFamily: "JetBrains Mono, monospace",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "120px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      color: "#AAAAAA",
-                    }}
-                  >
-                    <div style={{ width: "12px", height: "12px", background: "#FFFFFF" }} />
-                    Total
-                  </div>
-                  <div style={{ width: "40px", color: "#00ff88" }}>RTT</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>-</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRtt(totalRttAvg)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatRtt(totalRttMax)}
-                  </div>
-                </div>
-
-                {/* Total Loss */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    marginBottom: "4px",
-                    fontSize: "11px",
-                    fontFamily: "JetBrains Mono, monospace",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "120px",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <div style={{ width: "12px", height: "12px", background: "#AAAAAA" }} />
-                  </div>
-                  <div style={{ width: "40px", color: "#ff4444" }}>Loss</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>-</div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatLoss(totalLossAvg)}
-                  </div>
-                  <div style={{ width: "100px", textAlign: "right", color: "#AAAAAA" }}>
-                    {formatLoss(totalLossMax)}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+                    {site.type === "traffic" && (
+                      <div style={{ display: "flex", color: "#c8ced6" }}>
+                        <div
+                          style={{
+                            width: "140px",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: "8px",
+                              height: "8px",
+                              background: i.colorOut,
+                            }}
+                          />
+                          {i.name} Out
+                        </div>
+                        <div style={{ width: "85px" }}>
+                          {formatRate(sOut.cur).trim()}
+                        </div>
+                        <div style={{ width: "85px" }}>
+                          {formatRate(sOut.min).trim()}
+                        </div>
+                        <div style={{ width: "85px" }}>
+                          {formatRate(sOut.max).trim()}
+                        </div>
+                        <div style={{ width: "85px" }}>
+                          {formatRate(sOut.avg).trim()}
+                        </div>
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
         </div>
       </div>
     </div>
