@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useApp } from "../store/AppContext";
-import { Chart } from "./Chart";
-import { PingChart } from "./PingChart";
-import { SiteEditor } from "./SiteEditor";
-import { Settings } from "./Settings";
+import { Chart } from "../components/charts/Chart";
+import { PingChart } from "../components/charts/PingChart";
+import { SiteEditor } from "../components/editor/SiteEditor";
+import { Settings } from "../components/common/Settings";
 import { clearSession } from "../utils/auth";
 import type { Site, SiteInterface, TimeRange } from "../types";
 
@@ -853,10 +853,11 @@ function DetailChartModal({
     // Chart akan re-render dengan localStart/localEnd yang baru
   };
 
-  // Format datetime untuk input
+  // Format datetime untuk input (waktu lokal, bukan UTC)
   const formatDateTime = (ts: number) => {
     const d = new Date(ts);
-    return d.toISOString().slice(0, 16);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
   useEffect(() => {

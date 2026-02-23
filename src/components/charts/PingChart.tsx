@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Site } from "../types";
+import { Site } from "../../types";
 
 const PING_COLORS = {
   rttLine: "#CECECE", // Putih untuk RTT
@@ -30,7 +30,7 @@ export function PingChart({
   height: number;
 }) {
   // Padding yang lebih lebar untuk mengakomodasi teks yang diputar
-  const PAD = { top: 30, right: 50, bottom: 30, left: 75 };
+  const PAD = { top: 35, right: 60, bottom: 30, left: 75 };
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 

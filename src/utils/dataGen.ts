@@ -40,41 +40,50 @@ export function generateTraffic({
 }
 
 // Generate data dengan timestamp untuk Chart component
+// Menggunakan algoritma komposit 3 gelombang sine untuk "DNA unik" per site
 export function generateSmoothData(
   startTs: number,
   endTs: number,
   min: number,
   max: number,
-  seed?: number,
+  seed: number = Math.random() * 10000,
   interval: number = 15 * 60 * 1000 // Default 15 menit
 ): { timestamp: number; value: number }[] {
   const points: { timestamp: number; value: number }[] = [];
   const range = max - min;
-  const base = min;
 
-  let s = seed || Math.floor(Math.random() * 10000);
-
-  function rand() {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  }
+  // Kita buat 3 komponen "DNA" gelombang berbeda berdasarkan seed site.
+  // Ini memastikan lekukan grafik Site A tidak akan pernah sama dengan Site B.
+  const phase1 = seed * 0.13; // Pergeseran fase harian
+  const phase2 = seed * 0.71; // Pergeseran fase menengah
+  const phase3 = seed * 1.93; // Pergeseran fase cepat
 
   for (let ts = startTs; ts <= endTs; ts += interval) {
     const date = new Date(ts);
-    const hour = date.getHours();
+    const hour = date.getHours() + date.getMinutes() / 60;
 
-    // Pola harian: lebih tinggi di jam kerja
-    let timeFactor = 0.3;
-    if (hour >= 9 && hour <= 18) {
-      timeFactor = 0.7 + 0.3 * Math.sin((hour - 9) / 9 * Math.PI);
-    } else if (hour >= 19 && hour <= 23) {
-      timeFactor = 0.5;
-    }
+    // 1. Gelombang Harian Utama (Naik di siang hari, turun malam hari)
+    // Offset phase1 membuat puncak kesibukan tiap site bisa meleset sedikit (misal Site A sibuk jam 10, Site B jam 12)
+    let dailyWave = Math.sin(((hour - 8 + phase1 % 4) / 12) * Math.PI);
+    dailyWave = Math.max(0.1, dailyWave); // Jangan sampai 0 agar terlihat ada traffic idle
 
-    // Noise kecil untuk realisme
-    const noise = (rand() - 0.5) * 0.15 * range;
+    // 2. Gelombang Menengah (Fluktuasi membulat setiap ~4 jam)
+    const midWave = Math.sin(ts / (1000 * 60 * 60 * 4) + phase2) * 0.25;
 
-    const value = Math.max(0, base + range * timeFactor + noise);
+    // 3. Gelombang Cepat (Fluktuasi minor setiap ~45 menit agar terlihat natural)
+    const fastWave = Math.sin(ts / (1000 * 60 * 45) + phase3) * 0.1;
+
+    // Gabungkan ketiga gelombang
+    let combined = dailyWave * 0.6 + midWave + fastWave;
+
+    // Normalisasi agar grafik tidak tertembus ke luar batas 0.0 - 1.0
+    combined = Math.max(0, Math.min(1, combined));
+
+    // Tambahkan noise mikro (2-3%) agar garis tidak murni seperti vektor matematika
+    const pseudoRandom = (Math.abs(Math.sin(ts * seed)) - 0.5) * 0.05;
+
+    const finalMultiplier = Math.max(0, Math.min(1, combined + pseudoRandom));
+    const value = min + range * finalMultiplier;
 
     points.push({ timestamp: ts, value });
   }

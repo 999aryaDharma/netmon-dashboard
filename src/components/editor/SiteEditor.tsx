@@ -1,7 +1,7 @@
 import React, { useState } from "react";
-import type { Site, SiteInterface, SiteType } from "../types";
-import { useApp } from "../store/AppContext";
-import { generateSmoothData, generatePingData } from "../utils/dataGen";
+import type { Site, SiteInterface, SiteType } from "../../types";
+import { useApp } from "../../store/AppContext";
+import { generateSmoothData, generatePingData } from "../../utils/dataGen";
 
 interface SiteEditorProps {
   site?: Site;
@@ -118,11 +118,18 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
 
   const now = new Date();
   const weekAgo = new Date(Date.now() - 7 * 86_400_000);
-  const [genStart, setGenStart] = useState(weekAgo.toISOString().slice(0, 16));
-  const [genEnd, setGenEnd] = useState(now.toISOString().slice(0, 16));
+
+  // Helper untuk format datetime lokal (bukan UTC)
+  const formatLocalDateTime = (date: Date) => {
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+
+  const [genStart, setGenStart] = useState(formatLocalDateTime(weekAgo));
+  const [genEnd, setGenEnd] = useState(formatLocalDateTime(now));
 
   // State untuk Input Manual Data Point
-  const [manualTime, setManualTime] = useState(now.toISOString().slice(0, 16));
+  const [manualTime, setManualTime] = useState(formatLocalDateTime(now));
   const [manualValIn, setManualValIn] = useState<number>(0);
   const [manualValOut, setManualValOut] = useState<number>(0);
   const [manualRtt, setManualRtt] = useState<number>(0);
@@ -232,6 +239,7 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
   // Fungsi untuk menambahkan manual data point
   const addManualData = () => {
     if (!selectedIface) return;
+    // Convert datetime-local value ke timestamp (waktu lokal)
     const ts = new Date(manualTime).getTime();
     if (isNaN(ts)) return alert("Invalid time format");
 

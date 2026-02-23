@@ -1,9 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { changePassword } from '../utils/auth';
-import { useApp } from '../store/AppContext';
+import { changePassword } from '../../utils/auth';
+import { useApp } from '../../store/AppContext';
 
 export function Settings({ onClose }: { onClose: () => void }) {
-  const { clearAllData, exportData, importData } = useApp();
+  const { clearAllData, regenerateAllData, exportData, importData } = useApp();
   const [newPw, setNewPw] = useState('');
   const [confirmPw, setConfirmPw] = useState('');
   const [msg, setMsg] = useState('');
@@ -17,6 +17,13 @@ export function Settings({ onClose }: { onClose: () => void }) {
     await changePassword(newPw);
     setNewPw(''); setConfirmPw('');
     setMsg('Password updated.');
+  };
+
+  const doRegenerate = async () => {
+    if (confirm('Regenerate ALL data with current timeframe? This will replace existing data.')) {
+      const success = await regenerateAllData();
+      alert(success ? 'Data regenerated with current time!' : 'Failed to regenerate.');
+    }
   };
 
   const doExport = () => {
@@ -82,7 +89,16 @@ export function Settings({ onClose }: { onClose: () => void }) {
 
           <section>
             <div style={{ ...sectionLabel, color: '#773333' }}>Danger Zone</div>
-            <button onClick={async () => { if (confirm('Delete ALL data?')) await clearAllData(); }} style={{ ...actionBtn, borderColor: '#441111', color: '#aa3333', background: 'none' }}>
+            <button
+              onClick={doRegenerate}
+              style={{ ...actionBtn, borderColor: '#3333aa', color: '#aa33aa', background: 'none', marginBottom: '8px' }}
+            >
+              Regenerate Data (Current Time)
+            </button>
+            <button
+              onClick={async () => { if (confirm('Delete ALL data?')) await clearAllData(); }}
+              style={{ ...actionBtn, borderColor: '#441111', color: '#aa3333', background: 'none' }}
+            >
               Reset All Data
             </button>
           </section>

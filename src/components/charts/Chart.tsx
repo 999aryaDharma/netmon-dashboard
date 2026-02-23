@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Site } from "../types";
+import { Site } from "../../types";
 
 // Fungsi helper untuk memformat angka Bytes/Bits
 function formatBytesRate(v: number): string {
@@ -32,7 +32,7 @@ export function Chart({
   height: number;
 }) {
   // Padding disesuaikan untuk label yang diputar
-  const PAD = { top: 20, right: 20, bottom: 30, left: 85 };
+  const PAD = { top: 30, right: 30, bottom: 30, left: 85 };
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
@@ -179,7 +179,7 @@ export function Chart({
   } else {
     for (let i = 0; i <= yTickCount; i++) {
       const val = (axisMax / yTickCount) * i;
-      yTicks.push({ val, y: getY(val), label: val.toFixed(1) });
+      yTicks.push({ val, y: getY(val), label: formatBytesRate(val) });
     }
   }
 
@@ -258,17 +258,16 @@ export function Chart({
             stroke={THEME.gridLine}
             strokeWidth={1}
           />
-          {/* --- Judul Sumbu Y Kiri di Ujung Atas --- */}
+          {/* Label Angka Sumbu Y */}
           <text
             x={PAD.left - 8}
-            y={PAD.top - 8}
+            y={y + 4}
             textAnchor="end"
-            fill={THEME.axisTitle}
+            fill={THEME.text}
             fontSize="10"
-            fontWeight="bold"
             fontFamily="Arial, sans-serif"
           >
-            {site.type === "latency" ? "CPU Load" : "Bits/sec"}
+            {label}
           </text>
         </g>
       ))}
@@ -312,6 +311,19 @@ export function Chart({
           </g>
         );
       })}
+
+      {/* --- Judul Sumbu Y Kiri di Ujung Atas --- */}
+      <text
+        x={PAD.left - 8}
+        y={PAD.top - 12}
+        textAnchor="end"
+        fill={THEME.axisTitle}
+        fontSize="10"
+        fontWeight="bold"
+        fontFamily="Arial, sans-serif"
+      >
+        Bits/sec
+      </text>
 
       {/* Border Kotak Luar */}
       <rect

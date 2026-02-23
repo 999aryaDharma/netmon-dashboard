@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Login } from './components/Login';
-import { Dashboard } from './components/Dashboard';
+import { Login } from './pages/Login';
+import { Dashboard } from './pages/Dashboard';
 import { AppProvider } from './store/AppContext';
 import { isSessionValid } from './utils/auth';
 
