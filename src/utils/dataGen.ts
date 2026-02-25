@@ -7,6 +7,81 @@ function seededRandom(seed: number) {
   };
 }
 
+// Fungsi untuk men-generate data trafik yang terlihat sangat nyata (NOC Style)
+export function generateRealisticTrafficData(
+  startTs: number,
+  endTs: number,
+  minVal: number,
+  maxVal: number,
+  seed: number,
+  intervalMs: number
+) {
+  const data: { timestamp: number; value: number }[] = [];
+  
+  // PRNG (Pseudo-Random Number Generator) yang konsisten berdasarkan seed
+  // Agar setiap kali di-refresh, bentuk grafiknya tidak berubah-ubah secara acak
+  let currentSeed = seed;
+  const random = () => {
+    const x = Math.sin(currentSeed++) * 10000;
+    return x - Math.floor(x);
+  };
+
+  for (let ts = startTs; ts <= endTs; ts += intervalMs) {
+    const date = new Date(ts);
+    const hour = date.getHours();
+    const minute = date.getMinutes();
+    const dayOfWeek = date.getDay(); // 0 = Minggu, 6 = Sabtu
+
+    // 1. TREN DASAR (Berdasarkan Jam Sibuk Dunia Nyata)
+    const timeFloat = hour + minute / 60;
+    let baseLoad = 0.15; // Beban dasar jam 2-5 pagi (15%)
+
+    if (timeFloat >= 5 && timeFloat < 9) {
+      // Pagi hari: Trafik mulai naik drastis (Jam 5 sampai Jam 9)
+      baseLoad = 0.15 + ((timeFloat - 5) / 4) * 0.6; 
+    } else if (timeFloat >= 9 && timeFloat < 17) {
+      // Jam Kerja (Office Hours): Trafik tinggi (75% - 90%)
+      baseLoad = 0.75 + random() * 0.15; 
+    } else if (timeFloat >= 17 && timeFloat < 22) {
+      // Malam Hari: Trafik sekunder (50% - 70%)
+      baseLoad = 0.5 + random() * 0.2; 
+    } else if (timeFloat >= 22 || timeFloat < 5) {
+      // Tengah Malam: Berangsur turun ke beban dasar
+      if (timeFloat >= 22) baseLoad = 0.5 - ((timeFloat - 22) / 7) * 0.35;
+      if (timeFloat < 5) baseLoad = 0.15;
+    }
+
+    // 2. FAKTOR AKHIR PEKAN (Weekend Drop)
+    // Hari Sabtu dan Minggu biasanya trafik lebih rendah 30-40%
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      baseLoad *= 0.65; 
+    }
+
+    // 3. JITTER & MICRO-BURSTS (Noise Jaringan Resolusi Tinggi)
+    // Semakin tinggi trafik, semakin besar fluktuasi/noise-nya
+    const jitterLimit = baseLoad * 0.35; // Fluktuasi hingga 35% dari beban saat itu
+    const jitter = (random() - 0.5) * jitterLimit;
+
+    // 4. ANOMALI (Spike Tajam Mendadak)
+    // Ada kemungkinan 3% terjadi lonjakan besar (seperti unduh file besar/CCTV narik rekaman)
+    let spike = 0;
+    if (random() > 0.97) { 
+      spike = random() * 0.4; 
+    }
+
+    // Gabungkan semuanya dan pastikan tidak melebihi batas 0 - 1.0 (100%)
+    let finalMultiplier = baseLoad + jitter + spike;
+    finalMultiplier = Math.max(0.02, Math.min(1.0, finalMultiplier)); // Minimal 2% agar tidak nyentuh 0 bps
+
+    // Petakan multiplier ke nilai aslinya (minVal - maxVal)
+    const value = minVal + finalMultiplier * (maxVal - minVal);
+
+    data.push({ timestamp: ts, value: Math.floor(value) });
+  }
+
+  return data;
+}
+
 export function generateSmoothData(
   startTs: number,
   endTs: number,

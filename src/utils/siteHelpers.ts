@@ -1,5 +1,5 @@
 import type { Site, SiteInterface } from "../types";
-import { generateSmoothData, generatePingData } from "../utils/dataGen";
+import { generateSmoothData, generatePingData, generateRealisticTrafficData } from "../utils/dataGen";
 import { INTERFACE_COLORS, LATENCY_COLORS } from "../constants/defaults";
 
 // Helper function untuk merge data tanpa duplikasi timestamp
@@ -29,10 +29,12 @@ export function createDefaultSites(
   name: string,
   index: number,
   existingSites?: Site[],
+  customStartTs?: number,
+  customEndTs?: number,
 ): { loadSite: Site; latencySite: Site } {
-  const now = Date.now();
+  const now = customEndTs ?? Date.now();
   // UBAH DI SINI: Tarik data mundur 1 Tahun Full (365 Hari)
-  const startTs = now - 365 * 24 * 3_600_000;
+  const startTs = customStartTs ?? (now - 365 * 24 * 3_600_000);
 
   // UBAH DI SINI: Interval 1 Jam agar performa browser tetap aman
   const interval = 60 * 60 * 1000;
@@ -100,8 +102,8 @@ export function createDefaultSites(
         // Ambil warna sesuai urutannya dari defaults.ts
         colorIn: INTERFACE_COLORS[i].in,
         colorOut: INTERFACE_COLORS[i].out,
-        // Generate data natural untuk masing-masing interface dengan seed berbeda (index + i)
-        dataIn: generateSmoothData(
+        // Menggunakan Algoritma Trafik Realistis!
+        dataIn: generateRealisticTrafficData(
           startTs,
           now,
           inMin,
@@ -109,7 +111,7 @@ export function createDefaultSites(
           index * 100 + i,
           interval,
         ),
-        dataOut: generateSmoothData(
+        dataOut: generateRealisticTrafficData(
           startTs,
           now,
           outMin,

@@ -73,6 +73,7 @@ interface AppContextValue {
   setTimeRange: (range: TimeRange) => void;
   clearAllData: () => Promise<void>;
   regenerateAllData: () => Promise<boolean>;
+  regenerateAllDataFullYear: () => Promise<boolean>;
   exportData: () => string;
   importData: (json: string) => Promise<void>;
 }
@@ -177,6 +178,42 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return false;
     }
   }, []);
+
+  // Regenerate semua data dengan timeframe 1 tahun penuh (1 Januari - 31 Desember tahun ini)
+  const regenerateAllDataFullYear = useCallback(async () => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const startOfYear = new Date(currentYear, 0, 1).getTime(); // 1 Januari
+      const endOfYear = new Date(currentYear, 11, 31, 23, 59, 59, 999).getTime(); // 31 Desember 23:59:59
+      
+      const freshSites: Site[] = [];
+      DEFAULT_SITE_NAMES.forEach((name, index) => {
+        try {
+          const { loadSite, latencySite } = createDefaultSites(name, index, undefined, startOfYear, endOfYear);
+          freshSites.push(loadSite);
+          freshSites.push(latencySite);
+        } catch (err) {
+          console.error(`Error regenerating full year site "${name}":`, err);
+        }
+      });
+
+      // Clear old data and save new
+      await dbClearAll();
+      for (const site of freshSites) {
+        try {
+          await dbPutSite(site);
+        } catch (err) {
+          console.error(`Error saving full year regenerated site "${site.name}":`, err);
+        }
+      }
+
+      dispatch({ type: "SET_SITES", payload: freshSites });
+      return true;
+    } catch (err) {
+      console.error('Error regenerating full year data:', err);
+      return false;
+    }
+  }, []);
   const exportData = useCallback(
     (): string =>
       JSON.stringify({ sites: state.sites, exportedAt: Date.now() }, null, 2),
@@ -201,6 +238,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setTimeRange,
         clearAllData,
         regenerateAllData,
+        regenerateAllDataFullYear,
         exportData,
         importData,
       }}
