@@ -105,20 +105,30 @@ export function PingChart({
     xTicks.push({ ts, x: getX(ts) });
   }
 
-  // Helper format waktu NOC Style (HH:mm untuk tengah, DD. Mon untuk akhir)
+  // Helper format waktu NOC Style (Cerdas / Dinamis)
   const formatXLabel = (ts: number, isLast: boolean) => {
     const date = new Date(ts);
-    if (isLast) {
-      // Format: 26. Jun
-      return date
-        .toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
-        .replace(" ", ". ");
+    const rangeHours = timeRange / (1000 * 60 * 60); // Hitung rentang waktu dalam satuan Jam
+
+    if (rangeHours <= 24) {
+      // Jika rentang <= 24 Jam: Tampilkan jam (09:00), khusus di paling ujung tampilkan tanggal (25. Feb)
+      if (isLast) {
+        return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).replace(" ", ". ");
+      }
+      return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      
+    } else if (rangeHours <= 168) { // 168 jam = 7 Hari
+      // Jika rentang 2 - 7 Hari: Tampilkan Hari & Tanggal (contoh: Mon 20 Feb)
+      return date.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }).replace(/,/g, "");
+      
+    } else if (rangeHours <= 8760) { // 8760 jam = 1 Tahun
+      // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal & Bulan (contoh: 20 Feb)
+      return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+      
+    } else {
+      // Jika > 1 Tahun: Tampilkan Bulan & Tahun (contoh: Feb 2026)
+      return date.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
     }
-    // Format: 09:00
-    return date.toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   return (

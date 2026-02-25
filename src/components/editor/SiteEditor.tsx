@@ -10,12 +10,12 @@ interface SiteEditorProps {
 
 // Warna Palette Traffic - Hijau (IN) dan Ungu (OUT)
 const INTERFACE_PALETTE = [
-  { in: "#B6FF00", out: "#CC77FF" }, // ether1
-  { in: "#00FF00", out: "#9933FF" }, // ether2
-  { in: "#00CC00", out: "#6600CC" }, // ether3
-  { in: "#009900", out: "#330099" }, // ether4
-  { in: "#005500", out: "#110055" }, // ether5
-  { in: "#002200", out: "#000033" }, // LAN
+  { in: "#BCE249", out: "#CA89CB" }, // ether1
+  { in: "#A7D63A", out: "#A96DB0" }, // ether2
+  { in: "#93CA2D", out: "#8E5296" }, // ether3
+  { in: "#76BD22", out: "#703878" }, // ether4
+  { in: "#53A41B", out: "#511C54" }, // ether5
+  { in: "#128B15", out: "#350035" }, // LAN
 ];
 
 // Warna Palette Latency - RTT (IN) dan Loss (OUT)
@@ -31,11 +31,21 @@ function newSite(): Site {
     type: "traffic",
     unit: "bps",
     axisMax: 20000000,
-    interfaces: [newInterface(0)],
+    interfaces: [
+      newInterface(0), // ether1
+      newInterface(1), // ether2
+      newInterface(2), // ether3
+      newInterface(3), // ether4
+      newInterface(4), // ether5
+      newInterface(5), // LAN
+    ],
   };
 }
 
-function newInterface(index: number, type: SiteType = "traffic"): SiteInterface {
+function newInterface(
+  index: number,
+  type: SiteType = "traffic",
+): SiteInterface {
   let colors: { in: string; out: string };
 
   if (type === "ping") {
@@ -121,7 +131,7 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
 
   // Helper untuk format datetime lokal (bukan UTC)
   const formatLocalDateTime = (date: Date) => {
-    const pad = (n: number) => n.toString().padStart(2, '0');
+    const pad = (n: number) => n.toString().padStart(2, "0");
     return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
   };
 
@@ -165,7 +175,10 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
     setSelectedIfaceId(form.interfaces.find((i) => i.id !== id)?.id ?? "");
   };
 
-  const generateData = (ifaceId: string, series: "in" | "out" | "both" | "rtt_loss") => {
+  const generateData = (
+    ifaceId: string,
+    series: "in" | "out" | "both" | "rtt_loss",
+  ) => {
     const s = new Date(genStart).getTime();
     const e = new Date(genEnd).getTime();
     if (isNaN(s) || isNaN(e) || s >= e) return alert("Invalid date range");
@@ -246,16 +259,24 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
     const updated = { ...selectedIface };
 
     if (form.type === "ping") {
-      updated.dataRtt = [...(updated.dataRtt || []), { timestamp: ts, value: manualRtt }]
-        .sort((a, b) => a.timestamp - b.timestamp);
-      updated.dataLoss = [...(updated.dataLoss || []), { timestamp: ts, value: manualLoss }]
-        .sort((a, b) => a.timestamp - b.timestamp);
+      updated.dataRtt = [
+        ...(updated.dataRtt || []),
+        { timestamp: ts, value: manualRtt },
+      ].sort((a, b) => a.timestamp - b.timestamp);
+      updated.dataLoss = [
+        ...(updated.dataLoss || []),
+        { timestamp: ts, value: manualLoss },
+      ].sort((a, b) => a.timestamp - b.timestamp);
     } else {
-      updated.dataIn = [...(updated.dataIn || []), { timestamp: ts, value: manualValIn }]
-        .sort((a, b) => a.timestamp - b.timestamp);
+      updated.dataIn = [
+        ...(updated.dataIn || []),
+        { timestamp: ts, value: manualValIn },
+      ].sort((a, b) => a.timestamp - b.timestamp);
       if (form.type === "traffic") {
-        updated.dataOut = [...(updated.dataOut || []), { timestamp: ts, value: manualValOut }]
-          .sort((a, b) => a.timestamp - b.timestamp);
+        updated.dataOut = [
+          ...(updated.dataOut || []),
+          { timestamp: ts, value: manualValOut },
+        ].sort((a, b) => a.timestamp - b.timestamp);
       }
     }
 
@@ -617,7 +638,8 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                     {form.type === "ping" ? (
                       <>
                         <span style={{ color: "#00ff88" }}>
-                          RTT: {selectedIface.dataRtt?.length.toLocaleString()} pts
+                          RTT: {selectedIface.dataRtt?.length.toLocaleString()}{" "}
+                          pts
                         </span>
                         <span
                           style={{
@@ -625,7 +647,8 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                             marginLeft: "16px",
                           }}
                         >
-                          Loss: {selectedIface.dataLoss?.length.toLocaleString()} pts
+                          Loss:{" "}
+                          {selectedIface.dataLoss?.length.toLocaleString()} pts
                         </span>
                       </>
                     ) : (
@@ -640,7 +663,8 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                               marginLeft: "16px",
                             }}
                           >
-                            OUT: {selectedIface.dataOut.length.toLocaleString()} pts
+                            OUT: {selectedIface.dataOut.length.toLocaleString()}{" "}
+                            pts
                           </span>
                         )}
                       </>
@@ -676,7 +700,9 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                     </div>
                     {form.type === "ping" ? (
                       <button
-                        onClick={() => generateData(selectedIface.id, "rtt_loss")}
+                        onClick={() =>
+                          generateData(selectedIface.id, "rtt_loss")
+                        }
                         style={primaryBtn}
                       >
                         Generate RTT + Loss
@@ -707,7 +733,9 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                             Regen IN
                           </button>
                           <button
-                            onClick={() => generateData(selectedIface.id, "out")}
+                            onClick={() =>
+                              generateData(selectedIface.id, "out")
+                            }
                             style={{
                               ...ghostBtn,
                               color: selectedIface.colorOut,
@@ -732,7 +760,14 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                       gap: "8px",
                     }}
                   >
-                    <span style={{ ...lbl, color: "#33cc00", textTransform: "none", fontWeight: 600 }}>
+                    <span
+                      style={{
+                        ...lbl,
+                        color: "#33cc00",
+                        textTransform: "none",
+                        fontWeight: 600,
+                      }}
+                    >
                       ⚡ Insert Single Data Point (Manual)
                     </span>
                     <input
@@ -742,7 +777,13 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                       style={inp}
                     />
 
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "1fr 1fr",
+                        gap: "8px",
+                      }}
+                    >
                       {form.type === "ping" ? (
                         <>
                           <div>
@@ -781,8 +822,13 @@ export function SiteEditor({ site, onClose }: SiteEditorProps) {
                               <input
                                 type="number"
                                 value={manualValOut}
-                                onChange={(e) => setManualValOut(+e.target.value)}
-                                style={{ ...inp, color: selectedIface.colorOut }}
+                                onChange={(e) =>
+                                  setManualValOut(+e.target.value)
+                                }
+                                style={{
+                                  ...inp,
+                                  color: selectedIface.colorOut,
+                                }}
                               />
                             </div>
                           )}

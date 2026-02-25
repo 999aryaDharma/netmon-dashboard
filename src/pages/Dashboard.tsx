@@ -5,7 +5,7 @@ import { PingChart } from "../components/charts/PingChart";
 import { SiteEditor } from "../components/editor/SiteEditor";
 import { Settings } from "../components/common/Settings";
 import { clearSession } from "../utils/auth";
-import type { Site, SiteInterface, TimeRange } from "../types";
+import type { Site, TimeRange } from "../types";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -30,15 +30,15 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSite, setSelectedSite] = useState<string>("");
   const [showDropdown, setShowDropdown] = useState(false);
-  const [graphFilter, setGraphFilter] = useState<"all" | "load" | "latency">(
-    "all",
-  );
+
+  // 1. STATE FILTER BARU (4 Tipe)
+  const [graphFilter, setGraphFilter] = useState<
+    "all" | "traffic" | "load" | "ping"
+  >("all");
+
   const [showAllSites, setShowAllSites] = useState(false);
-  const [detailChart, setDetailChart] = useState<{
-    site: Site;
-    chartType: "load" | "latency";
-  } | null>(null);
-  const [showLegend, setShowLegend] = useState(true);
+  // 2. STATE MODAL DIPERMUDAH (Hanya butuh data site)
+  const [detailChart, setDetailChart] = useState<Site | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
 
   const applyPreset = (p: { label: string; hours: number }) => {
@@ -62,14 +62,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
     setActivePreset("");
   };
 
-  const openDetailChart = (site: Site, chartType: "load" | "latency") => {
-    setDetailChart({ site, chartType });
-  };
-
-  const closeDetailChart = () => {
-    setDetailChart(null);
-  };
-
   const { sites, timeRange, loading } = state;
 
   // Format functions for legend
@@ -79,21 +71,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
       return `${(v / 1_000_000).toFixed(2).padStart(6, " ")}Mbps`;
     if (v >= 1_000) return `${(v / 1_000).toFixed(2).padStart(6, " ")}kbps`;
     return `${v.toFixed(2).padStart(6, " ")} bps`;
-  };
-
-  const formatVol = (avgBps: number | null): string => {
-    if (avgBps === null || isNaN(avgBps)) return "  -nan B";
-    const durationSeconds = (timeRange.end - timeRange.start) / 1000;
-    const totalBytes = (avgBps * durationSeconds) / 8;
-    if (totalBytes >= 1_099_511_627_776)
-      return `${(totalBytes / 1_099_511_627_776).toFixed(2).padStart(6, " ")}TB`;
-    if (totalBytes >= 1_073_741_824)
-      return `${(totalBytes / 1_073_741_824).toFixed(2).padStart(6, " ")}GB`;
-    if (totalBytes >= 1_048_576)
-      return `${(totalBytes / 1_048_576).toFixed(2).padStart(6, " ")}MB`;
-    if (totalBytes >= 1_024)
-      return `${(totalBytes / 1_024).toFixed(2).padStart(6, " ")}KB`;
-    return `${totalBytes.toFixed(2).padStart(6, " ")}B`;
   };
 
   const formatRtt = (v: number | null): string => {
@@ -117,34 +94,31 @@ export function Dashboard({ onLogout }: DashboardProps) {
       cur: vals[vals.length - 1],
       avg: vals.reduce((a, b) => a + b, 0) / vals.length,
       max: Math.max(...vals),
-      min: Math.min(...vals), // <-- Tambahkan ini
+      min: Math.min(...vals),
     };
   };
 
-  // Filter sites based on search query AND graph filter
+  // 3. LOGIKA FILTER GRAFIK DIPERBAIKI
   const filteredSites = (() => {
     let result = sites;
 
-    // Apply search filter
     if (searchQuery.trim() !== "") {
       result = result.filter((site) =>
         site.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     }
 
-    // Apply graph type filter
-    if (graphFilter === "load") {
-      // Only show traffic/load sites
-      result = result.filter((site) => site.type !== "ping");
-    } else if (graphFilter === "latency") {
-      // Only show ping/latency sites
+    if (graphFilter === "traffic") {
+      result = result.filter((site) => site.type === "traffic");
+    } else if (graphFilter === "load") {
+      result = result.filter((site) => site.type === "latency"); // latency = load upward di data Anda
+    } else if (graphFilter === "ping") {
       result = result.filter((site) => site.type === "ping");
     }
 
     return result;
   })();
 
-  // Get sites to display (selected, all, or first 12 for grid)
   const sitesToDisplay = selectedSite
     ? sites.filter((s) => s.id === selectedSite)
     : showAllSites
@@ -154,7 +128,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const hasMoreSites =
     filteredSites.length > 12 && !selectedSite && !showAllSites;
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (
@@ -180,7 +153,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
         overflow: "hidden",
       }}
     >
-      {/* Top bar - Original Header */}
+      {/* Top bar */}
       <div
         style={{
           display: "flex",
@@ -205,7 +178,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           NETMON
         </span>
 
-        {/* Site Search Dropdown */}
+        {/* Search */}
         <div ref={searchRef} style={{ position: "relative" }}>
           <div
             style={{
@@ -255,7 +228,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
                 cursor: "pointer",
               }}
             />
-            {searchQuery ? (
+            {searchQuery && (
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -273,21 +246,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
               >
                 ×
               </button>
-            ) : (
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="#666"
-                strokeWidth="2"
-              >
-                <path d="m6 9 6 6 6-6" />
-              </svg>
             )}
           </div>
 
-          {/* Dropdown results */}
           {showDropdown && (
             <div
               style={{
@@ -329,11 +290,11 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     style={{
                       padding: "10px 16px",
                       cursor: "pointer",
+                      fontSize: "12px",
+                      borderBottom: "1px solid #222",
                       background:
                         selectedSite === site.id ? "#0a2a1a" : "transparent",
                       color: selectedSite === site.id ? "#33cc00" : "#ccc",
-                      fontSize: "12px",
-                      borderBottom: "1px solid #222",
                     }}
                   >
                     {site.name}
@@ -424,7 +385,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
         </div>
       </div>
 
-      {/* Graph Filter Tabs - Below Header */}
+      {/* 4. TABS FILTER GRAFIK */}
       <div
         style={{
           background: "#222629",
@@ -437,61 +398,28 @@ export function Dashboard({ onLogout }: DashboardProps) {
         }}
       >
         <span style={{ fontSize: "11px", color: "#888" }}>Graphs:</span>
-        <button
-          onClick={() => setGraphFilter("all")}
-          style={{
-            background: graphFilter === "all" ? "#0a2a1a" : "none",
-            border:
-              graphFilter === "all" ? "1px solid #33cc00" : "1px solid #333",
-            borderRadius: "3px",
-            color: graphFilter === "all" ? "#33cc00" : "#888",
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: "11px",
-            padding: "4px 12px",
-            cursor: "pointer",
-          }}
-        >
-          All
-        </button>
-        <button
-          onClick={() => setGraphFilter("load")}
-          style={{
-            background: graphFilter === "load" ? "#0a2a1a" : "none",
-            border:
-              graphFilter === "load" ? "1px solid #33cc00" : "1px solid #333",
-            borderRadius: "3px",
-            color: graphFilter === "load" ? "#33cc00" : "#888",
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: "11px",
-            padding: "4px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Load
-        </button>
-        <button
-          onClick={() => setGraphFilter("latency")}
-          style={{
-            background: graphFilter === "latency" ? "#0a2a1a" : "none",
-            border:
-              graphFilter === "latency"
-                ? "1px solid #33cc00"
-                : "1px solid #333",
-            borderRadius: "3px",
-            color: graphFilter === "latency" ? "#33cc00" : "#888",
-            fontFamily: "JetBrains Mono, monospace",
-            fontSize: "11px",
-            padding: "4px 12px",
-            cursor: "pointer",
-          }}
-        >
-          Ping
-        </button>
+        {(["all", "traffic", "load", "ping"] as const).map((type) => (
+          <button
+            key={type}
+            onClick={() => setGraphFilter(type)}
+            style={{
+              background: graphFilter === type ? "#0a2a1a" : "none",
+              border:
+                graphFilter === type ? "1px solid #33cc00" : "1px solid #333",
+              borderRadius: "3px",
+              color: graphFilter === type ? "#33cc00" : "#888",
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: "11px",
+              padding: "4px 12px",
+              cursor: "pointer",
+              textTransform: "capitalize",
+            }}
+          >
+            {type}
+          </button>
+        ))}
       </div>
 
-      {/* ============================================
-          MAIN CONTENT - CSS Grid 3 Columns
-      ============================================= */}
       <div
         style={{
           flex: 1,
@@ -529,7 +457,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
         )}
         {!loading && (
           <>
-            {/* Graph Grid - 3 Columns */}
             <div
               style={{
                 display: "grid",
@@ -539,7 +466,6 @@ export function Dashboard({ onLogout }: DashboardProps) {
             >
               {sitesToDisplay.map((site) => (
                 <div key={site.id}>
-                  {/* Site Header */}
                   <div
                     style={{
                       padding: "12px 16px",
@@ -577,32 +503,17 @@ export function Dashboard({ onLogout }: DashboardProps) {
                       EDIT
                     </button>
                   </div>
-
-                  {/* Chart - Load atau Latency tergantung type site */}
                   <GridSiteCard
                     site={site}
                     timeRange={timeRange}
-                    onEdit={() => setEditSite(site)}
-                    chartType={site.type === "ping" ? "latency" : "load"}
-                    onOpenDetail={() =>
-                      openDetailChart(
-                        site,
-                        site.type === "ping" ? "latency" : "load",
-                      )
-                    }
+                    onOpenDetail={() => setDetailChart(site)}
                   />
                 </div>
               ))}
             </div>
 
-            {/* Show more button */}
             {hasMoreSites && (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "20px",
-                }}
-              >
+              <div style={{ textAlign: "center", padding: "20px" }}>
                 <button
                   onClick={() => setShowAllSites(true)}
                   style={{
@@ -621,14 +532,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
               </div>
             )}
 
-            {/* Show less button (when all sites shown) */}
             {showAllSites && filteredSites.length > 12 && (
-              <div
-                style={{
-                  textAlign: "center",
-                  padding: "20px",
-                }}
-              >
+              <div style={{ textAlign: "center", padding: "20px" }}>
                 <button
                   onClick={() => setShowAllSites(false)}
                   style={{
@@ -655,14 +560,13 @@ export function Dashboard({ onLogout }: DashboardProps) {
         <SiteEditor site={editSite} onClose={() => setEditSite(undefined)} />
       )}
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+
       {detailChart && (
         <DetailChartModal
-          site={detailChart.site}
-          chartType={detailChart.chartType}
-          onClose={closeDetailChart}
+          site={detailChart}
+          onClose={() => setDetailChart(null)}
           timeRange={timeRange}
           formatRate={formatRate}
-          formatVol={formatVol}
           formatRtt={formatRtt}
           formatLoss={formatLoss}
           stats={stats}
@@ -673,21 +577,17 @@ export function Dashboard({ onLogout }: DashboardProps) {
 }
 
 // ============================================
-// GridSiteCard - Compact card for grid view
+// GridSiteCard & ResponsiveChart (Sederhana)
 // ============================================
 
 function GridSiteCard({
   site,
   timeRange,
-  onEdit,
-  chartType = "load",
   onOpenDetail,
 }: {
   site: Site;
   timeRange: TimeRange;
-  onEdit: () => void;
-  chartType?: "load" | "latency";
-  onOpenDetail?: () => void;
+  onOpenDetail: () => void;
 }) {
   return (
     <div
@@ -700,27 +600,17 @@ function GridSiteCard({
       }}
       onClick={onOpenDetail}
     >
-      <ResponsiveChart
-        site={site}
-        timeRange={timeRange}
-        chartType={chartType}
-      />
+      <ResponsiveChart site={site} timeRange={timeRange} />
     </div>
   );
 }
 
-// ============================================
-// ResponsiveChart wrapper
-// ============================================
-
 function ResponsiveChart({
   site,
   timeRange,
-  chartType = "load",
 }: {
   site: Site;
   timeRange: TimeRange;
-  chartType?: "load" | "latency";
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(400);
@@ -737,7 +627,7 @@ function ResponsiveChart({
 
   return (
     <div ref={ref} style={{ width: "100%" }}>
-      {chartType === "latency" ? (
+      {site.type === "ping" ? (
         <PingChart
           site={site}
           startTs={timeRange.start}
@@ -784,14 +674,9 @@ function topBtn(color: string, bg: string): React.CSSProperties {
 }
 
 // ============================================
-// DetailChartModal - Full detail view
+// DetailChartModal
 // ============================================
 
-// ============================================
-// DetailChartModal - Full detail view (Observium/LibreNMS Style)
-// ============================================
-
-// Komponen bantuan untuk menggambar grafik mini di tombol atas
 function MiniSparkline() {
   return (
     <svg width="80" height="30" style={{ marginTop: "4px" }}>
@@ -811,21 +696,17 @@ function MiniSparkline() {
 
 function DetailChartModal({
   site,
-  chartType,
   onClose,
   timeRange,
   formatRate,
-  formatVol,
   formatRtt,
   formatLoss,
   stats,
 }: {
   site: Site;
-  chartType: "load" | "latency";
   onClose: () => void;
   timeRange: TimeRange;
   formatRate: (v: number | null) => string;
-  formatVol: (v: number | null) => string;
   formatRtt: (v: number | null) => string;
   formatLoss: (v: number | null) => string;
   stats: (data: { timestamp: number; value: number }[]) => {
@@ -838,7 +719,6 @@ function DetailChartModal({
   const ref = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1000);
 
-  // Local state untuk custom date - TIDAK mempengaruhi global state
   const [localStart, setLocalStart] = useState(timeRange.start);
   const [localEnd, setLocalEnd] = useState(timeRange.end);
 
@@ -849,14 +729,11 @@ function DetailChartModal({
       alert("Invalid date range");
       return;
     }
-    // Hanya update local state, TIDAK panggil setTimeRange global
-    // Chart akan re-render dengan localStart/localEnd yang baru
   };
 
-  // Format datetime untuk input (waktu lokal, bukan UTC)
   const formatDateTime = (ts: number) => {
     const d = new Date(ts);
-    const pad = (n: number) => n.toString().padStart(2, '0');
+    const pad = (n: number) => n.toString().padStart(2, "0");
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
   };
 
@@ -882,7 +759,13 @@ function DetailChartModal({
     "Two Years",
   ];
 
-  const iface = site.interfaces[0];
+  // Penentuan Label berdasarkan Site Type
+  const siteTypeLabel =
+    site.type === "ping"
+      ? "Icmp Perf"
+      : site.type === "traffic"
+        ? "Traffic"
+        : "CPU Load";
 
   return (
     <div
@@ -895,13 +778,13 @@ function DetailChartModal({
         alignItems: "center",
         justifyContent: "center",
         zIndex: 2000,
-        fontFamily: "Arial, sans-serif", // NOC tools usually use standard sans-serif here
+        fontFamily: "Arial, sans-serif",
       }}
     >
       <div
         onClick={(e) => e.stopPropagation()}
         style={{
-          background: "#2b3036", // Warna dark-slate khas Observium
+          background: "#2b3036",
           borderRadius: "4px",
           width: "95%",
           maxWidth: "1300px",
@@ -911,7 +794,7 @@ function DetailChartModal({
           color: "#c8ced6",
         }}
       >
-        {/* 1. Header Bar */}
+        {/* Header Bar */}
         <div
           style={{
             padding: "8px 16px",
@@ -925,7 +808,7 @@ function DetailChartModal({
           <div
             style={{ fontSize: "13px", fontWeight: "bold", color: "#e4e8ec" }}
           >
-            {site.name} :: {chartType === "latency" ? "Icmp Perf" : "Traffic"}
+            {site.name} :: {siteTypeLabel}
           </div>
           <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
             <select
@@ -939,9 +822,7 @@ function DetailChartModal({
                 outline: "none",
               }}
             >
-              <option>
-                {chartType === "latency" ? "Icmp Perf" : "Traffic"}
-              </option>
+              <option>{siteTypeLabel}</option>
             </select>
             <button
               onClick={onClose}
@@ -958,7 +839,7 @@ function DetailChartModal({
           </div>
         </div>
 
-        {/* 2. Sparklines Row */}
+        {/* Sparklines */}
         <div
           style={{
             display: "flex",
@@ -993,7 +874,7 @@ function DetailChartModal({
           ))}
         </div>
 
-        {/* 3. Date Range Selector Row */}
+        {/* Date Selector */}
         <div
           style={{
             padding: "12px",
@@ -1058,18 +939,9 @@ function DetailChartModal({
               Update
             </button>
           </div>
-          <div
-            style={{ fontSize: "11px", color: "#9fb3c8", cursor: "pointer" }}
-          >
-            {/* <span style={{ textDecoration: "underline" }}>Hide Legend</span> |{" "}
-            <span style={{ textDecoration: "underline" }}>Show Previous</span> |{" "}
-            <span style={{ textDecoration: "underline" }}>
-              Show RRD Command
-            </span> */}
-          </div>
         </div>
 
-        {/* 4. Main Chart Area */}
+        {/* Chart Area */}
         <div
           ref={ref}
           style={{
@@ -1078,7 +950,7 @@ function DetailChartModal({
             justifyContent: "center",
           }}
         >
-          {chartType === "latency" ? (
+          {site.type === "ping" ? (
             <PingChart
               site={site}
               startTs={localStart}
@@ -1097,7 +969,7 @@ function DetailChartModal({
           )}
         </div>
 
-        {/* 5. Legend Table (RRDTool Exact Style) */}
+        {/* Legend Table */}
         <div
           style={{
             padding: "0 16px 24px 76px",
@@ -1105,12 +977,15 @@ function DetailChartModal({
             fontSize: "11px",
           }}
         >
-          {/* Legend Header */}
           <div
             style={{ display: "flex", marginBottom: "4px", color: "#9fb3c8" }}
           >
             <div style={{ width: "140px" }}>
-              {chartType === "latency" ? "Milliseconds" : "Traffic"}
+              {site.type === "ping"
+                ? "Milliseconds"
+                : site.type === "traffic"
+                  ? "Traffic"
+                  : "Load"}
             </div>
             <div style={{ width: "85px", textAlign: "left" }}>Cur</div>
             <div style={{ width: "85px", textAlign: "left" }}>Min</div>
@@ -1118,8 +993,7 @@ function DetailChartModal({
             <div style={{ width: "85px", textAlign: "left" }}>Avg</div>
           </div>
 
-          {/* Legend Data Rows */}
-          {chartType === "latency"
+          {site.type === "ping"
             ? site.interfaces.map((i) => {
                 const sRtt = stats(i.dataRtt || []);
                 const sLoss = stats(i.dataLoss || []);
@@ -1146,8 +1020,7 @@ function DetailChartModal({
                             height: "8px",
                             background: "#ccc",
                           }}
-                        />{" "}
-                        {/* Kotak Putih/Abu */}
+                        />
                         RTT
                       </div>
                       <div style={{ width: "85px" }}>
@@ -1178,8 +1051,7 @@ function DetailChartModal({
                             height: "8px",
                             background: "#ff4444",
                           }}
-                        />{" "}
-                        {/* Kotak Merah */}
+                        />
                         Loss
                       </div>
                       <div style={{ width: "85px" }}>

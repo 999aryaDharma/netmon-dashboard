@@ -1,16 +1,18 @@
 import React, { useMemo } from "react";
 import { Site } from "../../types";
 
-// Fungsi helper untuk memformat angka Bytes/Bits
+// 1. FORMATTER DIPERBAIKI: Menambahkan format M / k dan tanda minus (-)
 function formatBytesRate(v: number): string {
-  if (v === null || isNaN(v)) return "0 bps";
+  if (v === null || isNaN(v)) return "0";
+  const isNegative = v < 0;
   const abs = Math.abs(v);
-  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(2)} Mbps`;
-  if (abs >= 1_000) return `${(v / 1_000).toFixed(2)} kbps`;
-  return `${v.toFixed(2)} bps`;
+  const sign = isNegative ? "-" : "";
+
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)} M`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(1)} k`;
+  return `${sign}${abs.toFixed(0)}`;
 }
 
-// Gunakan tema yang sama persis dengan PingChart agar konsisten
 const THEME = {
   chartBg: "#323841",
   gridLine: "rgba(255, 255, 255, 0.15)",
@@ -31,21 +33,17 @@ export function Chart({
   width: number;
   height: number;
 }) {
-  // Padding disesuaikan untuk label yang diputar
   const PAD = { top: 30, right: 30, bottom: 30, left: 85 };
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
-  // --- Data Processing ---
   let combined: { ts: number; [key: string]: number }[] = [];
   const timeSet = new Set<number>();
 
   site.interfaces.forEach((iface) => {
-    // "latency" di aplikasi ini dipakai untuk single metric (CPU Load)
     if (site.type === "latency") {
       iface.dataIn?.forEach((d) => timeSet.add(d.timestamp));
     } else {
-      // "traffic"
       iface.dataIn?.forEach((d) => timeSet.add(d.timestamp));
       iface.dataOut?.forEach((d) => timeSet.add(d.timestamp));
     }
@@ -85,7 +83,6 @@ export function Chart({
     );
   }
 
-  // --- Stacking Logic ---
   const stacked: any[] = combined.map((c) => ({ ...c }));
   let maxStack = 0;
 
@@ -101,7 +98,6 @@ export function Chart({
       if (sum > maxStack) maxStack = sum;
     });
   } else {
-    // Traffic (bidirectional)
     stacked.forEach((row) => {
       let sumIn = 0;
       site.interfaces.forEach((iface) => {
@@ -123,57 +119,53 @@ export function Chart({
     });
   }
 
-  // --- Scales ---
-  // Dynamic axis: gunakan nilai terbesar antara configured max atau spike manual
   const configuredMax = site.axisMax || 100;
   const axisMax = Math.max(configuredMax, maxStack * 1.1);
   const timeRange = endTs - startTs || 1;
   const getX = (ts: number) => PAD.left + ((ts - startTs) / timeRange) * chartW;
 
-  // Y-Scale Logic: Traffic (Center 0) vs Load (Bottom 0)
   let getY: (v: number) => number;
   let zeroY: number;
   if (site.type === "traffic") {
-    // Tengah adalah 0
     const halfH = chartH / 2;
     zeroY = PAD.top + halfH;
     getY = (val: number) => zeroY - (val / axisMax) * halfH;
   } else {
-    // Bawah adalah 0 (Untuk tipe 'latency' / CPU Load upward)
     zeroY = PAD.top + chartH;
     getY = (val: number) => zeroY - (val / axisMax) * chartH;
   }
 
-  // area generators
-  const makeArea = (keyY0: string, keyY1: string) => {
+  // 2. PERBAIKAN GENERATOR AREA: Menerima parameter invertY agar OUT digambar ke bawah
+  const makeArea = (keyY0: string, keyY1: string, invertY = false) => {
     if (stacked.length < 2) return "";
     let top = ``;
     let bottom = ``;
     // forward
     for (let i = 0; i < stacked.length; i++) {
       const x = getX(stacked[i].ts);
-      const y1 = getY(stacked[i][keyY1]);
+      const val = stacked[i][keyY1];
+      const y1 = getY(invertY ? -val : val);
       top += `${i === 0 ? "M" : "L"} ${x} ${y1} `;
     }
     // backward
     for (let i = stacked.length - 1; i >= 0; i--) {
       const x = getX(stacked[i].ts);
-      const y0 = getY(stacked[i][keyY0]);
+      const val = stacked[i][keyY0];
+      const y0 = getY(invertY ? -val : val);
       bottom += `L ${x} ${y0} `;
     }
     return top + bottom + "Z";
   };
 
-  // --- Ticks ---
   const yTickCount = 5;
   const yTicks = [];
   if (site.type === "traffic") {
-    // Ticks positif dan negatif
     for (let i = 0; i <= yTickCount; i++) {
       const val = (axisMax / yTickCount) * i;
       if (val === 0) continue;
       yTicks.push({ val, y: getY(val), label: formatBytesRate(val) });
-      yTicks.push({ val: -val, y: getY(-val), label: formatBytesRate(val) });
+      // Perbaikan: gunakan -val agar string memunculkan tanda minus (-)
+      yTicks.push({ val: -val, y: getY(-val), label: formatBytesRate(-val) });
     }
     yTicks.push({ val: 0, y: zeroY, label: "0" });
   } else {
@@ -183,8 +175,7 @@ export function Chart({
     }
   }
 
-  // X Ticks (Waktu)
-  const xTickCount = 8;
+  const xTickCount = width < 600 ? 4 : 8;
   const xTicks = [];
   const step = timeRange / xTickCount;
   for (let i = 0; i <= xTickCount; i++) {
@@ -192,23 +183,34 @@ export function Chart({
     xTicks.push({ ts, x: getX(ts) });
   }
 
-  // Helper format waktu NOC Style
+  // Helper format waktu NOC Style (Cerdas / Dinamis)
   const formatXLabel = (ts: number, isLast: boolean) => {
     const date = new Date(ts);
-    if (isLast) {
-      return date
-        .toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
-        .replace(" ", ". ");
+    const rangeHours = timeRange / (1000 * 60 * 60); // Hitung rentang waktu dalam satuan Jam
+
+    if (rangeHours <= 24) {
+      // Jika rentang <= 24 Jam: Tampilkan jam (09:00), khusus di paling ujung tampilkan tanggal (25. Feb)
+      if (isLast) {
+        return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).replace(" ", ". ");
+      }
+      return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      
+    } else if (rangeHours <= 168) { // 168 jam = 7 Hari
+      // Jika rentang 2 - 7 Hari: Tampilkan Hari & Tanggal (contoh: Mon 20 Feb)
+      return date.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }).replace(/,/g, "");
+      
+    } else if (rangeHours <= 8760) { // 8760 jam = 1 Tahun
+      // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal & Bulan (contoh: 20 Feb)
+      return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+      
+    } else {
+      // Jika > 1 Tahun: Tampilkan Bulan & Tahun (contoh: Feb 2026)
+      return date.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
     }
-    return date.toLocaleTimeString("en-GB", {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
   };
 
   return (
     <svg width={width} height={height} style={{ background: "transparent" }}>
-      {/* Area Plot Latar Belakang */}
       <rect
         x={PAD.left}
         y={PAD.top}
@@ -218,7 +220,7 @@ export function Chart({
         stroke="none"
       />
 
-      {/* --- Areas --- */}
+      {/* 3. PERBAIKAN RENDER LAYER */}
       {[...site.interfaces].reverse().map((iface) => {
         if (site.type === "latency") {
           return (
@@ -235,19 +237,23 @@ export function Chart({
               <path
                 d={makeArea(`${iface.id}_in_y0`, `${iface.id}_in_y1`)}
                 fill={iface.colorIn}
-                opacity={0.7}
+                stroke="rgba(0,0,0,0.15)" // Memberi batas garis tipis antar layer
+                strokeWidth={0.5}
+                opacity={0.9} // Dibuat solid pekat
               />
               <path
-                d={makeArea(`${iface.id}_out_y0`, `${iface.id}_out_y1`)}
+                // PENTING: Flag 'true' untuk membalikkan posisi Y
+                d={makeArea(`${iface.id}_out_y0`, `${iface.id}_out_y1`, true)}
                 fill={iface.colorOut}
-                opacity={0.7}
+                stroke="rgba(0,0,0,0.15)"
+                strokeWidth={0.5}
+                opacity={0.9}
               />
             </g>
           );
         }
       })}
 
-      {/* --- Grid & Y Labels --- */}
       {yTicks.map(({ y, label }, i) => (
         <g key={i}>
           <line
@@ -258,7 +264,6 @@ export function Chart({
             stroke={THEME.gridLine}
             strokeWidth={1}
           />
-          {/* Label Angka Sumbu Y */}
           <text
             x={PAD.left - 8}
             y={y + 4}
@@ -272,7 +277,6 @@ export function Chart({
         </g>
       ))}
 
-      {/* Center Line untuk Traffic */}
       {site.type === "traffic" && (
         <line
           x1={PAD.left}
@@ -285,7 +289,6 @@ export function Chart({
         />
       )}
 
-      {/* --- X Labels (Waktu) --- */}
       {xTicks.map(({ ts, x }, i) => {
         const isLast = i === xTicks.length - 1;
         return (
@@ -312,7 +315,6 @@ export function Chart({
         );
       })}
 
-      {/* --- Judul Sumbu Y Kiri di Ujung Atas --- */}
       <text
         x={PAD.left - 8}
         y={PAD.top - 12}
@@ -325,7 +327,6 @@ export function Chart({
         Bits/sec
       </text>
 
-      {/* Border Kotak Luar */}
       <rect
         x={PAD.left}
         y={PAD.top}

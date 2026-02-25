@@ -47,7 +47,7 @@ export const DEFAULT_SITE_NAMES = [
 
 // Warna palette untuk interface Traffic
 export const INTERFACE_COLORS = [
-  { in: "#BCE249", out: "#CA89CB" }, // ether1
+  { in: " #BCE249", out: "#CA89CB" }, // ether1
   { in: "#A7D63A", out: "#A96DB0" }, // ether2
   { in: "#93CA2D", out: "#8E5296" }, // ether3
   { in: "#76BD22", out: "#703878" }, // ether4
