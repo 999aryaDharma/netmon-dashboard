@@ -7,142 +7,69 @@ function seededRandom(seed: number) {
   };
 }
 
-// Fungsi untuk men-generate data trafik yang terlihat sangat nyata (NOC Style)
-export function generateRealisticTrafficData(
-  startTs: number,
-  endTs: number,
-  minVal: number,
-  maxVal: number,
-  seed: number,
-  intervalMs: number
-) {
-  const data: { timestamp: number; value: number }[] = [];
-  
-  // PRNG (Pseudo-Random Number Generator) yang konsisten berdasarkan seed
-  // Agar setiap kali di-refresh, bentuk grafiknya tidak berubah-ubah secara acak
-  let currentSeed = seed;
-  const random = () => {
-    const x = Math.sin(currentSeed++) * 10000;
-    return x - Math.floor(x);
-  };
-
-  for (let ts = startTs; ts <= endTs; ts += intervalMs) {
-    const date = new Date(ts);
-    const hour = date.getHours();
-    const minute = date.getMinutes();
-    const dayOfWeek = date.getDay(); // 0 = Minggu, 6 = Sabtu
-
-    // 1. TREN DASAR (Berdasarkan Jam Sibuk Dunia Nyata)
-    const timeFloat = hour + minute / 60;
-    let baseLoad = 0.15; // Beban dasar jam 2-5 pagi (15%)
-
-    if (timeFloat >= 5 && timeFloat < 9) {
-      // Pagi hari: Trafik mulai naik drastis (Jam 5 sampai Jam 9)
-      baseLoad = 0.15 + ((timeFloat - 5) / 4) * 0.6; 
-    } else if (timeFloat >= 9 && timeFloat < 17) {
-      // Jam Kerja (Office Hours): Trafik tinggi (75% - 90%)
-      baseLoad = 0.75 + random() * 0.15; 
-    } else if (timeFloat >= 17 && timeFloat < 22) {
-      // Malam Hari: Trafik sekunder (50% - 70%)
-      baseLoad = 0.5 + random() * 0.2; 
-    } else if (timeFloat >= 22 || timeFloat < 5) {
-      // Tengah Malam: Berangsur turun ke beban dasar
-      if (timeFloat >= 22) baseLoad = 0.5 - ((timeFloat - 22) / 7) * 0.35;
-      if (timeFloat < 5) baseLoad = 0.15;
-    }
-
-    // 2. FAKTOR AKHIR PEKAN (Weekend Drop)
-    // Hari Sabtu dan Minggu biasanya trafik lebih rendah 30-40%
-    if (dayOfWeek === 0 || dayOfWeek === 6) {
-      baseLoad *= 0.65; 
-    }
-
-    // 3. JITTER & MICRO-BURSTS (Noise Jaringan Resolusi Tinggi)
-    // Semakin tinggi trafik, semakin besar fluktuasi/noise-nya
-    const jitterLimit = baseLoad * 0.35; // Fluktuasi hingga 35% dari beban saat itu
-    const jitter = (random() - 0.5) * jitterLimit;
-
-    // 4. ANOMALI (Spike Tajam Mendadak)
-    // Ada kemungkinan 3% terjadi lonjakan besar (seperti unduh file besar/CCTV narik rekaman)
-    let spike = 0;
-    if (random() > 0.97) { 
-      spike = random() * 0.4; 
-    }
-
-    // Gabungkan semuanya dan pastikan tidak melebihi batas 0 - 1.0 (100%)
-    let finalMultiplier = baseLoad + jitter + spike;
-    finalMultiplier = Math.max(0.02, Math.min(1.0, finalMultiplier)); // Minimal 2% agar tidak nyentuh 0 bps
-
-    // Petakan multiplier ke nilai aslinya (minVal - maxVal)
-    const value = minVal + finalMultiplier * (maxVal - minVal);
-
-    data.push({ timestamp: ts, value: Math.floor(value) });
-  }
-
-  return data;
-}
-
 export function generateSmoothData(
   startTs: number,
   endTs: number,
   min: number,
   max: number,
   seed: number = Math.random() * 10000,
-  interval: number = 60 * 60 * 1000, // Default 1 Jam
+  interval: number = 60 * 60 * 1000,
+  isCCTV: boolean = false,
 ): { timestamp: number; value: number }[] {
   const points: { timestamp: number; value: number }[] = [];
   const range = max - min;
   const rand = seededRandom(seed);
 
-  const phase2 = rand() * Math.PI * 2;
-  const phase3 = rand() * Math.PI * 2;
+  const phaseShift = rand() * Math.PI * 2;
+  const peakHourShift = (rand() - 0.5) * 8;
+  const volumeMultiplier = 0.5 + rand() * 0.5;
+
+  let outageRemaining = 0;
 
   for (let ts = startTs; ts <= endTs; ts += interval) {
     const date = new Date(ts);
-    const hour = date.getHours() + date.getMinutes() / 60;
-    const dayOfWeek = date.getDay(); // 0 = Minggu, 6 = Sabtu
+    const originalHour = date.getHours() + date.getMinutes() / 60;
 
-    // 1. Siklus Harian (Sibuk jam kerja, sepi malam hari)
-    let dailyWave = Math.sin(((hour - 8) / 12) * Math.PI);
-    dailyWave = Math.max(0.1, dailyWave);
-
-    // 2. Efek Akhir Pekan (Trafik turun 30-40% di Sabtu/Minggu)
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const weekendMultiplier = isWeekend ? 0.6 + rand() * 0.1 : 1.0;
-
-    // 3. Gelombang Menengah & Cepat (Fluktuasi natural)
-    const midWave = Math.sin(ts / (1000 * 60 * 60 * 4) + phase2) * 0.15;
-    const fastWave = Math.sin(ts / (1000 * 60 * 45) + phase3) * 0.05;
-
-    let combined = (dailyWave * 0.7 + midWave + fastWave) * weekendMultiplier;
-    combined = Math.max(0, Math.min(1, combined));
-
-    // 4. Noise Natural
-    const noise = (rand() - 0.5) * 0.08;
-
-    // 5. ANOMALI JARINGAN (GANGGUAN REALISTIS)
-    let anomalyMultiplier = 1;
-    const eventRoll = rand();
-
-    if (eventRoll < 0.002) {
-      // 0.2% Peluang: Outage / Link Down (Trafik drop hampir 0)
-      anomalyMultiplier = rand() * 0.05;
-    } else if (eventRoll < 0.005) {
-      // 0.3% Peluang: Gangguan Medium (Trafik drop tiba-tiba)
-      anomalyMultiplier = 0.2 + rand() * 0.3;
-    } else if (eventRoll < 0.015) {
-      // 1% Peluang: Lonjakan Ekstrem (Misal DDOS, Backup terjadwal, Event khusus)
-      anomalyMultiplier = 1.4 + rand() * 0.6;
+    if (outageRemaining > 0) {
+      outageRemaining--;
+      points.push({
+        timestamp: ts,
+        value: min * 0.05 + rand() * (range * 0.02),
+      });
+      continue;
     }
 
-    const finalMultiplier = Math.max(
-      0,
-      Math.min(1.2, (combined + noise) * anomalyMultiplier),
-    );
-    let value = min + range * finalMultiplier;
+    if (rand() < 0.008) {
+      outageRemaining = Math.floor(rand() * 6) + 1;
+      points.push({
+        timestamp: ts,
+        value: min * 0.05 + rand() * (range * 0.02),
+      });
+      continue;
+    }
 
-    // Pastikan tidak ada nilai negatif
-    points.push({ timestamp: ts, value: Math.max(0, value) });
+    let value: number;
+
+    if (isCCTV) {
+      // CCTV Jitter Kasar (Fluktuasi sangat tinggi)
+      const baseTraffic = min + range * 0.7;
+      const jitter = (rand() - 0.5) * (range * 0.5);
+      value = baseTraffic + jitter;
+    } else {
+      const shiftedHour = (originalHour + peakHourShift + 24) % 24;
+      let dailyWave = Math.sin(((shiftedHour - 8) / 12) * Math.PI);
+      dailyWave = Math.max(0.1, dailyWave) * volumeMultiplier;
+
+      const midWave = Math.sin(ts / (1000 * 60 * 60 * 6) + phaseShift) * 0.15;
+      const noise = (rand() - 0.5) * 0.25;
+      let spike = rand() < 0.02 ? rand() * 0.4 : 0;
+
+      let finalMultiplier = dailyWave * 0.7 + midWave + noise + spike;
+      finalMultiplier = Math.max(0.05, Math.min(1.1, finalMultiplier));
+      value = min + range * finalMultiplier;
+    }
+
+    points.push({ timestamp: ts, value: Math.floor(Math.max(0, value)) });
   }
 
   return points;
@@ -152,7 +79,7 @@ export function generatePingData(
   startTs: number,
   endTs: number,
   options?: { baseRtt?: number; variance?: number; seed?: number },
-  interval: number = 60 * 60 * 1000, // Default 1 Jam
+  interval: number = 60 * 60 * 1000,
 ): {
   rtt: { timestamp: number; value: number }[];
   loss: { timestamp: number; value: number }[];
@@ -164,7 +91,23 @@ export function generatePingData(
   const variance = options?.variance ?? 3;
   const rand = seededRandom(options?.seed || 1234);
 
+  let outageRemaining = 0;
+
   for (let ts = startTs; ts <= endTs; ts += interval) {
+    if (outageRemaining > 0) {
+      outageRemaining--;
+      rtt.push({ timestamp: ts, value: 0 });
+      loss.push({ timestamp: ts, value: 100 });
+      continue;
+    }
+
+    if (rand() < 0.008) {
+      outageRemaining = Math.floor(rand() * 6) + 1;
+      rtt.push({ timestamp: ts, value: 0 });
+      loss.push({ timestamp: ts, value: 100 });
+      continue;
+    }
+
     const date = new Date(ts);
     const hour = date.getHours();
 
@@ -172,23 +115,14 @@ export function generatePingData(
     let lossValue = 0;
     const eventRoll = rand();
 
-    // ANOMALI PING (GANGGUAN)
-    if (eventRoll < 0.002) {
-      // 0.2% Peluang: RTO / Link Mati Total
-      rttValue = 0;
-      lossValue = 100;
-    } else if (eventRoll < 0.01) {
-      // 0.8% Peluang: Kongesti Berat (Ping bengkak 3x-8x lipat, Loss 5-20%)
+    if (eventRoll < 0.01) {
       rttValue = baseRtt * (3 + rand() * 5);
       lossValue = rand() * 15 + 5;
     } else if (eventRoll < 0.04) {
-      // 3% Peluang: Jitter Ringan (Ping naik sedikit, Loss 1-2%)
       rttValue = baseRtt * (1.5 + rand() * 1.5);
       lossValue = rand() * 2;
     } else {
-      // Kondisi Normal: Kadang ada loss background sangat kecil (0 - 0.5%)
       lossValue = rand() < 0.02 ? rand() * 0.5 : 0;
-      // Sedikit kenaikan ping di jam sibuk kerja
       if (hour >= 9 && hour <= 18) rttValue *= 1.05 + rand() * 0.1;
     }
 

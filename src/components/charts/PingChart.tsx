@@ -16,6 +16,31 @@ const THEME = {
   axisTitle: "#e4e8ec", // Warna judul sumbu sedikit lebih terang
 };
 
+// Algoritma NOC: Membulatkan sumbu Y ke angka bulat terdekat yang "cantik"
+function getNiceAxisMax(rawMax: number): number {
+  if (rawMax <= 0) return 100;
+  
+  // Cari besaran skala (Misal: 10, 100, 1000, 1 Juta)
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawMax)));
+  const normalized = rawMax / magnitude;
+  
+  // Paksa angka keriting ke titik henti yang solid
+  let nice: number;
+  if (normalized <= 1.0) nice = 1.0;
+  else if (normalized <= 1.2) nice = 1.2;
+  else if (normalized <= 1.5) nice = 1.5;
+  else if (normalized <= 2.0) nice = 2.0;
+  else if (normalized <= 2.5) nice = 2.5;
+  else if (normalized <= 3.0) nice = 3.0;
+  else if (normalized <= 4.0) nice = 4.0;
+  else if (normalized <= 5.0) nice = 5.0;
+  else if (normalized <= 6.0) nice = 6.0;
+  else if (normalized <= 8.0) nice = 8.0;
+  else nice = 10.0;
+  
+  return nice * magnitude;
+}
+
 export function PingChart({
   site,
   startTs,
@@ -58,7 +83,9 @@ export function PingChart({
   // Skala Y Kiri (RTT - default max 100ms agar grafik terlihat penuh)
   const maxRttVal = Math.max(100, ...rttIn.map((d) => d.value));
   // Tambahkan buffer 10% di atas agar tidak mentok atap
-  const axisMaxRtt = maxRttVal * 1.1;
+  const rawMax = maxRttVal * 1.1;
+  // Bulatkan ke nilai "cantik" terdekat
+  const axisMaxRtt = getNiceAxisMax(rawMax);
   const getY_Rtt = (val: number) =>
     PAD.top + chartH - (val / axisMaxRtt) * chartH;
 

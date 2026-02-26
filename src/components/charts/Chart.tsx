@@ -20,6 +20,31 @@ const THEME = {
   axisTitle: "#edf1f4",
 };
 
+// Algoritma NOC: Membulatkan sumbu Y ke angka bulat terdekat yang "cantik"
+function getNiceAxisMax(rawMax: number): number {
+  if (rawMax <= 0) return 100;
+  
+  // Cari besaran skala (Misal: 10, 100, 1000, 1 Juta)
+  const magnitude = Math.pow(10, Math.floor(Math.log10(rawMax)));
+  const normalized = rawMax / magnitude;
+  
+  // Paksa angka keriting ke titik henti yang solid
+  let nice: number;
+  if (normalized <= 1.0) nice = 1.0;
+  else if (normalized <= 1.2) nice = 1.2;
+  else if (normalized <= 1.5) nice = 1.5;
+  else if (normalized <= 2.0) nice = 2.0;
+  else if (normalized <= 2.5) nice = 2.5;
+  else if (normalized <= 3.0) nice = 3.0;
+  else if (normalized <= 4.0) nice = 4.0;
+  else if (normalized <= 5.0) nice = 5.0;
+  else if (normalized <= 6.0) nice = 6.0;
+  else if (normalized <= 8.0) nice = 8.0;
+  else nice = 10.0;
+  
+  return nice * magnitude;
+}
+
 export function Chart({
   site,
   startTs,
@@ -120,7 +145,11 @@ export function Chart({
   }
 
   const configuredMax = site.axisMax || 100;
-  const axisMax = Math.max(configuredMax, maxStack * 1.1);
+  // Hitung puncak mentah (Peak + 10%)
+  const rawMax = Math.max(configuredMax, maxStack * 1.1);
+  // Masukkan ke mesin pembulat agar labelnya seragam!
+  const axisMax = getNiceAxisMax(rawMax);
+  
   const timeRange = endTs - startTs || 1;
   const getX = (ts: number) => PAD.left + ((ts - startTs) / timeRange) * chartW;
 
@@ -237,12 +266,11 @@ export function Chart({
               <path
                 d={makeArea(`${iface.id}_in_y0`, `${iface.id}_in_y1`)}
                 fill={iface.colorIn}
-                stroke="rgba(0,0,0,0.15)" // Memberi batas garis tipis antar layer
+                stroke="rgba(0,0,0,0.15)"
                 strokeWidth={0.5}
-                opacity={0.9} // Dibuat solid pekat
+                opacity={0.9}
               />
               <path
-                // PENTING: Flag 'true' untuk membalikkan posisi Y
                 d={makeArea(`${iface.id}_out_y0`, `${iface.id}_out_y1`, true)}
                 fill={iface.colorOut}
                 stroke="rgba(0,0,0,0.15)"

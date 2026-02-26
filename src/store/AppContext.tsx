@@ -86,19 +86,24 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const loadSites = useCallback(async () => {
     try {
       let sites = await dbGetAllSites();
+      console.log(`[AppContext] Loaded ${sites.length} sites from DB`);
 
       // Jika tidak ada site, initialize dengan default sites
       if (sites.length === 0) {
+        console.log(`[AppContext] No sites found, initializing ${DEFAULT_SITE_NAMES.length} default sites...`);
         const defaultSites: Site[] = [];
         DEFAULT_SITE_NAMES.forEach((name, index) => {
           try {
             const { loadSite, latencySite } = createDefaultSites(name, index);
             defaultSites.push(loadSite);
             defaultSites.push(latencySite);
+            console.log(`[AppContext] Created site: ${name}`);
           } catch (err) {
             console.error(`Error creating site "${name}":`, err);
           }
         });
+
+        console.log(`[AppContext] Created ${defaultSites.length} sites total`);
 
         // Save ke DB
         for (const site of defaultSites) {
@@ -115,6 +120,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Data tidak akan dihapus otomatis, user harus manual regenerate jika mau update data.
       // Ini mencegah hilangnya data manual yang sudah di-input untuk laporan.
 
+      console.log(`[AppContext] Final site count: ${sites.length}`);
       dispatch({ type: "SET_SITES", payload: sites });
     } catch (err) {
       console.error('Error loading sites:', err);

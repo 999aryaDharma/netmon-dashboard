@@ -589,6 +589,47 @@ export function Dashboard({ onLogout }: DashboardProps) {
             ))}
           </div>
         )}
+
+        {/* Tombol Show All / Show Less */}
+        {!loading && hasMoreSites && !showAllSites && (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: "24px" }}>
+            <button
+              onClick={() => setShowAllSites(true)}
+              style={{
+                padding: "10px 24px",
+                background: "#0a2a1a",
+                border: "1px solid #33cc00",
+                borderRadius: "4px",
+                color: "#33cc00",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontFamily: "JetBrains Mono, monospace",
+                fontWeight: "bold",
+              }}
+            >
+              Show All {filteredSites.length} Sites
+            </button>
+          </div>
+        )}
+        {!loading && showAllSites && (
+          <div style={{ display: "flex", justifyContent: "center", marginTop: "24px" }}>
+            <button
+              onClick={() => setShowAllSites(false)}
+              style={{
+                padding: "10px 24px",
+                background: "none",
+                border: "1px solid #444",
+                borderRadius: "4px",
+                color: "#888",
+                cursor: "pointer",
+                fontSize: "12px",
+                fontFamily: "JetBrains Mono, monospace",
+              }}
+            >
+              Show Less (12 Sites)
+            </button>
+          </div>
+        )}
       </div>
 
       {showNew && <SiteEditor onClose={() => setShowNew(false)} />}
