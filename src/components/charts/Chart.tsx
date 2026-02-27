@@ -1,18 +1,6 @@
 import React, { useMemo } from "react";
 import { Site } from "../../types";
 
-// 1. FORMATTER DIPERBAIKI: Menambahkan format M / k dan tanda minus (-)
-function formatBytesRate(v: number): string {
-  if (v === null || isNaN(v)) return "0";
-  const isNegative = v < 0;
-  const abs = Math.abs(v);
-  const sign = isNegative ? "-" : "";
-
-  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(1)} M`;
-  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(1)} k`;
-  return `${sign}${abs.toFixed(0)}`;
-}
-
 const THEME = {
   chartBg: "#323841",
   gridLine: "rgba(255, 255, 255, 0.15)",
@@ -20,29 +8,25 @@ const THEME = {
   axisTitle: "#edf1f4",
 };
 
-// Algoritma NOC: Membulatkan sumbu Y ke angka bulat terdekat yang "cantik"
-function getNiceAxisMax(rawMax: number): number {
-  if (rawMax <= 0) return 100;
+/**
+ * Meniru format RRDTool: 
+ * - Memberikan spasi antara angka dan unit (misal: "5 M", "2.5 M")
+ * - Menghilangkan desimal jika bilangan bulat (misal: "10 M" bukan "10.0 M")
+ */
+function formatRRDLabel(v: number): string {
+  const abs = Math.abs(v);
+  if (abs === 0) return "0";
+  const sign = v < 0 ? "-" : "";
   
-  // Cari besaran skala (Misal: 10, 100, 1000, 1 Juta)
-  const magnitude = Math.pow(10, Math.floor(Math.log10(rawMax)));
-  const normalized = rawMax / magnitude;
+  let val = abs;
+  let unit = "";
+  if (abs >= 1_000_000_000) { val = abs / 1_000_000_000; unit = "G"; }
+  else if (abs >= 1_000_000) { val = abs / 1_000_000; unit = "M"; }
+  else if (abs >= 1_000) { val = abs / 1_000; unit = "k"; }
   
-  // Paksa angka keriting ke titik henti yang solid
-  let nice: number;
-  if (normalized <= 1.0) nice = 1.0;
-  else if (normalized <= 1.2) nice = 1.2;
-  else if (normalized <= 1.5) nice = 1.5;
-  else if (normalized <= 2.0) nice = 2.0;
-  else if (normalized <= 2.5) nice = 2.5;
-  else if (normalized <= 3.0) nice = 3.0;
-  else if (normalized <= 4.0) nice = 4.0;
-  else if (normalized <= 5.0) nice = 5.0;
-  else if (normalized <= 6.0) nice = 6.0;
-  else if (normalized <= 8.0) nice = 8.0;
-  else nice = 10.0;
-  
-  return nice * magnitude;
+  // RRDTool Style: 1 desimal jika bukan bulat (2.5), tanpa desimal jika bulat (5)
+  const formatted = val % 1 === 0 ? val.toString() : val.toFixed(1);
+  return `${sign}${formatted} ${unit}`.trim();
 }
 
 export function Chart({
@@ -144,25 +128,76 @@ export function Chart({
     });
   }
 
-  const configuredMax = site.axisMax || 100;
-  // Hitung puncak mentah (Peak + 10%)
-  const rawMax = Math.max(configuredMax, maxStack * 1.1);
-  // Masukkan ke mesin pembulat agar labelnya seragam!
-  const axisMax = getNiceAxisMax(rawMax);
-  
   const timeRange = endTs - startTs || 1;
   const getX = (ts: number) => PAD.left + ((ts - startTs) / timeRange) * chartW;
 
-  let getY: (v: number) => number;
-  let zeroY: number;
-  if (site.type === "traffic") {
-    const halfH = chartH / 2;
-    zeroY = PAD.top + halfH;
-    getY = (val: number) => zeroY - (val / axisMax) * halfH;
-  } else {
-    zeroY = PAD.top + chartH;
-    getY = (val: number) => zeroY - (val / axisMax) * chartH;
-  }
+  // Logika Interval Sumbu Y yang "Cantik" (RRDTool Style) - FIXED STEPS
+  const { finalAxisMax, yTicks, getY, zeroY } = useMemo(() => {
+    // PAKSA step tetap berdasarkan axisMax untuk konsistensi
+    let step: number;
+    let finalMax: number;
+    
+    // Tentukan step berdasarkan axisMax (harus match dengan siteHelpers.ts)
+    if (site.axisMax === 1_000_000_000) {
+      // Backbone: Step 200 M
+      step = 200_000_000;
+      finalMax = 1_000_000_000;
+    } else if (site.axisMax === 40_000_000) {
+      // Integration: Step 8 M
+      step = 8_000_000;
+      finalMax = 40_000_000;
+    } else if (site.axisMax === 6_000_000) {
+      // CCTV: Step 1.2 M
+      step = 1_200_000;
+      finalMax = 6_000_000;
+    } else if (site.axisMax === 100_000_000) {
+      // Default: Step 20 M
+      step = 20_000_000;
+      finalMax = 100_000_000;
+    } else {
+      // Fallback: Gunakan algoritma nice step
+      const peak = maxStack * 1.05;
+      const targetMax = Math.max(site.axisMax || 0, peak);
+      const mag = Math.pow(10, Math.floor(Math.log10(targetMax || 1)));
+      const possibleSteps = [
+        mag / 10, mag / 5, mag / 4, mag / 2,
+        mag, mag * 2, mag * 2.5, mag * 5
+      ];
+      step = mag;
+      for (const s of possibleSteps) {
+        const divs = targetMax / s;
+        if (divs >= 4 && divs <= 9) {
+          step = s;
+          break;
+        }
+      }
+      finalMax = Math.ceil(targetMax / step) * step;
+    }
+
+    // 5. Setup getY dan zeroY
+    let getYFunc: (v: number) => number;
+    let zeroYVal: number;
+    if (site.type === "traffic") {
+      const halfH = chartH / 2;
+      zeroYVal = PAD.top + halfH;
+      getYFunc = (val: number) => zeroYVal - (val / finalMax) * halfH;
+    } else {
+      zeroYVal = PAD.top + chartH;
+      getYFunc = (val: number) => zeroYVal - (val / finalMax) * chartH;
+    }
+    
+    // 6. Generate Ticks
+    const ticks = [];
+    for (let v = 0; v <= finalMax; v += step) {
+      ticks.push({ val: v, y: getYFunc(v), label: formatRRDLabel(v) });
+      if (site.type === "traffic" && v !== 0) {
+        // Untuk sumbu negatif (Out)
+        ticks.push({ val: -v, y: getYFunc(-v), label: formatRRDLabel(-v) });
+      }
+    }
+    
+    return { finalAxisMax: finalMax, yTicks: ticks, getY: getYFunc, zeroY: zeroYVal };
+  }, [site.axisMax, maxStack, site.type, chartH]);
 
   // 2. PERBAIKAN GENERATOR AREA: Menerima parameter invertY agar OUT digambar ke bawah
   const makeArea = (keyY0: string, keyY1: string, invertY = false) => {
@@ -186,24 +221,6 @@ export function Chart({
     return top + bottom + "Z";
   };
 
-  const yTickCount = 5;
-  const yTicks = [];
-  if (site.type === "traffic") {
-    for (let i = 0; i <= yTickCount; i++) {
-      const val = (axisMax / yTickCount) * i;
-      if (val === 0) continue;
-      yTicks.push({ val, y: getY(val), label: formatBytesRate(val) });
-      // Perbaikan: gunakan -val agar string memunculkan tanda minus (-)
-      yTicks.push({ val: -val, y: getY(-val), label: formatBytesRate(-val) });
-    }
-    yTicks.push({ val: 0, y: zeroY, label: "0" });
-  } else {
-    for (let i = 0; i <= yTickCount; i++) {
-      const val = (axisMax / yTickCount) * i;
-      yTicks.push({ val, y: getY(val), label: formatBytesRate(val) });
-    }
-  }
-
   const xTickCount = width < 600 ? 4 : 8;
   const xTicks = [];
   const step = timeRange / xTickCount;
@@ -211,6 +228,21 @@ export function Chart({
     const ts = startTs + step * i;
     xTicks.push({ ts, x: getX(ts) });
   }
+
+  // Grid Styles - Dual Layer System
+  const GRID_STYLE = {
+    background: {
+      stroke: "rgba(255, 255, 255, 0.15)", // Putih sangat tipis
+      width: "0.3",
+      dash: "none"
+    },
+    inner: {
+      stroke: "#666666", // Abu-abu lebih gelap & kontras
+      width: "1",
+      dash: "4,4", // Efek putus-putus khas RRDTool
+      opacity: "0.4"
+    }
+  };
 
   // Helper format waktu NOC Style (Cerdas / Dinamis)
   const formatXLabel = (ts: number, isLast: boolean) => {
@@ -223,15 +255,15 @@ export function Chart({
         return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).replace(" ", ". ");
       }
       return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-      
+
     } else if (rangeHours <= 168) { // 168 jam = 7 Hari
       // Jika rentang 2 - 7 Hari: Tampilkan Hari & Tanggal (contoh: Mon 20 Feb)
       return date.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }).replace(/,/g, "");
-      
+
     } else if (rangeHours <= 8760) { // 8760 jam = 1 Tahun
       // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal & Bulan (contoh: 20 Feb)
       return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-      
+
     } else {
       // Jika > 1 Tahun: Tampilkan Bulan & Tahun (contoh: Feb 2026)
       return date.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
@@ -240,6 +272,7 @@ export function Chart({
 
   return (
     <svg width={width} height={height} style={{ background: "transparent" }}>
+      {/* --- LAYER 1: Background Area Plot --- */}
       <rect
         x={PAD.left}
         y={PAD.top}
@@ -249,7 +282,33 @@ export function Chart({
         stroke="none"
       />
 
-      {/* 3. PERBAIKAN RENDER LAYER */}
+      {/* --- LAYER 2: Grid TIPIS (Latar Belakang & Label) --- */}
+      <g id="background-grid">
+        {yTicks.map((tick, i) => (
+          <line
+            key={`bg-y-${i}`}
+            x1={PAD.left - 5} // Menjorok sedikit ke area label
+            y1={tick.y}
+            x2={PAD.left + chartW}
+            y2={tick.y}
+            stroke={GRID_STYLE.background.stroke}
+            strokeWidth={GRID_STYLE.background.width}
+          />
+        ))}
+        {xTicks.map((tick, i) => (
+          <line
+            key={`bg-x-${i}`}
+            x1={tick.x}
+            y1={PAD.top}
+            x2={tick.x}
+            y2={PAD.top + chartH + 5} // Menjorok 5px ke arah teks label
+            stroke={GRID_STYLE.background.stroke}
+            strokeWidth={GRID_STYLE.background.width}
+          />
+        ))}
+      </g>
+
+      {/* --- LAYER 3: Render Data Area (Stacked) --- */}
       {[...site.interfaces].reverse().map((iface) => {
         if (site.type === "latency") {
           return (
@@ -257,7 +316,8 @@ export function Chart({
               key={iface.id}
               d={makeArea(`${iface.id}_y0`, `${iface.id}_y1`)}
               fill={iface.colorIn}
-              opacity={0.8}
+              shapeRendering="crispEdges"
+              opacity={1}
             />
           );
         } else {
@@ -266,57 +326,78 @@ export function Chart({
               <path
                 d={makeArea(`${iface.id}_in_y0`, `${iface.id}_in_y1`)}
                 fill={iface.colorIn}
-                stroke="rgba(0,0,0,0.15)"
-                strokeWidth={0.5}
-                opacity={0.9}
+                shapeRendering="crispEdges"
+                opacity={1}
               />
               <path
                 d={makeArea(`${iface.id}_out_y0`, `${iface.id}_out_y1`, true)}
                 fill={iface.colorOut}
-                stroke="rgba(0,0,0,0.15)"
-                strokeWidth={0.5}
-                opacity={0.9}
+                shapeRendering="crispEdges"
+                opacity={1}
               />
             </g>
           );
         }
       })}
 
-      {yTicks.map(({ y, label }, i) => (
-        <g key={i}>
+      {/* --- LAYER 4: Grid TEBAL & PUTUS-PUTUS (Di Atas Data) --- */}
+      <g id="inner-grid" style={{ pointerEvents: 'none' }}>
+        {yTicks.map((tick, i) => (
           <line
+            key={`inner-y-${i}`}
             x1={PAD.left}
-            y1={y}
+            y1={tick.y}
             x2={PAD.left + chartW}
-            y2={y}
-            stroke={THEME.gridLine}
-            strokeWidth={1}
+            y2={tick.y}
+            stroke={GRID_STYLE.inner.stroke}
+            strokeWidth={GRID_STYLE.inner.width}
+            strokeDasharray={GRID_STYLE.inner.dash}
+            opacity={GRID_STYLE.inner.opacity}
           />
-          <text
-            x={PAD.left - 8}
-            y={y + 4}
-            textAnchor="end"
-            fill={THEME.text}
-            fontSize="10"
-            fontFamily="Arial, sans-serif"
-          >
-            {label}
-          </text>
-        </g>
-      ))}
+        ))}
+        {xTicks.map((tick, i) => (
+          <line
+            key={`inner-x-${i}`}
+            x1={tick.x}
+            y1={PAD.top}
+            x2={tick.x}
+            y2={PAD.top + chartH}
+            stroke={GRID_STYLE.inner.stroke}
+            strokeWidth={GRID_STYLE.inner.width}
+            strokeDasharray={GRID_STYLE.inner.dash}
+            opacity={GRID_STYLE.inner.opacity}
+          />
+        ))}
+      </g>
 
+      {/* --- LAYER 5: Zero Line (Garis Tengah) --- */}
       {site.type === "traffic" && (
         <line
           x1={PAD.left}
           y1={zeroY}
           x2={PAD.left + chartW}
           y2={zeroY}
-          stroke={THEME.text}
-          strokeWidth={1}
-          opacity={0.3}
+          stroke="rgba(255,255,255,0.5)"
+          strokeWidth="1"
         />
       )}
 
+      {/* --- LAYER 6: Label Y-Axis --- */}
+      {yTicks.map(({ y, label }, i) => (
+        <text
+          key={`label-y-${i}`}
+          x={PAD.left - 8}
+          y={y + 4}
+          textAnchor="end"
+          fill={THEME.text}
+          fontSize="10"
+          fontFamily="Arial, sans-serif"
+        >
+          {label}
+        </text>
+      ))}
+
+      {/* --- LAYER 7: Label X-Axis --- */}
       {xTicks.map(({ ts, x }, i) => {
         const isLast = i === xTicks.length - 1;
         return (
@@ -343,6 +424,7 @@ export function Chart({
         );
       })}
 
+      {/* --- LAYER 8: Axis Title --- */}
       <text
         x={PAD.left - 8}
         y={PAD.top - 12}
@@ -355,14 +437,15 @@ export function Chart({
         Bits/sec
       </text>
 
+      {/* --- LAYER 9: Border Luar Kotak Grafik --- */}
       <rect
         x={PAD.left}
         y={PAD.top}
         width={chartW}
         height={chartH}
         fill="none"
-        stroke={THEME.gridLine}
-        strokeWidth={1}
+        stroke="#999"
+        strokeWidth="1"
       />
     </svg>
   );

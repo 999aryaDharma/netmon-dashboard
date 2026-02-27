@@ -60,23 +60,25 @@ export function createDefaultSites(
   let inMax: number, inMin: number, outMax: number, outMin: number;
 
   if (isBackbone) {
-    axisMaxLoad = 1_000_000_000; // 1000 Mbps
-    inMax = 850_000_000; // Peak 850 Mbps
-    inMin = 250_000_000; // Low 250 Mbps
+    // Internet Backbone: 1.0 G (Label: 0, 200 M, 400 M, 600 M, 800 M, 1000 M)
+    axisMaxLoad = 1_000_000_000;
+    inMax = 400_000_000;  // Turun ke 400M (40% dari max) - agar tidak penuh
+    inMin = 100_000_000;  // Turun ke 100M
     outMax = 150_000_000;
     outMin = 40_000_000;
   } else if (isIntegration) {
-    axisMaxLoad = 35_000_000; // 35 Mbps
-    inMax = 32_000_000; // Hampir penuh di jam sibuk
-    inMin = 8_000_000;
-    outMax = 8_000_000;
+    // Integration Network: 40 M (Label: 0, 8 M, 16 M, 24 M, 32 M, 40 M)
+    axisMaxLoad = 40_000_000;
+    inMax = 16_000_000;   // Turun ke 16M (40% dari max)
+    inMin = 4_000_000;    // Turun ke 4M
+    outMax = 9_000_000;
     outMin = 1_000_000;
   } else if (isCCTV) {
-    axisMaxLoad = 5_000_000; // 5 Mbps
-    // CCTV sifatnya CBR (Constant Bit Rate) - Trafik stabil tinggi terus menerus
-    inMax = 4_800_000; // Stabil di 4.8 Mbps (Kamera HD)
-    inMin = 3_800_000; // Paling turun hanya ke 3.8 Mbps
-    outMax = 500_000; // Out kecil hanya untuk request RTSP
+    // CCTV: 6 M (Label: 0, 1.2 M, 2.4 M, 3.6 M, 4.8 M, 6 M)
+    axisMaxLoad = 6_000_000;
+    inMax = 2_400_000;    // Turun ke 2.4M (40% dari max)
+    inMin = 1_200_000;    // Turun ke 1.2M
+    outMax = 800_000;
     outMin = 100_000;
   } else {
     axisMaxLoad = 100_000_000; // Default 100 Mbps
@@ -101,56 +103,82 @@ export function createDefaultSites(
     type: "traffic",
     unit: "bps",
     axisMax: axisMaxLoad,
-    // HANYA GENERATE ETHER 1 (index 0), ETHER 3 (index 2), ETHER 5 (index 4), dan LAN (index 5)
-    interfaces: [0, 2, 4, 5].map((i, arrayIndex) => {
+    // 6 Interface dengan pola asimetris khas NOC/MRTG
+    interfaces: [0, 1, 2, 3, 4, 5].map((i) => {
       let ifaceName = `ether${i + 1}`;
       if (i === 5) ifaceName = "LAN";
 
-      let currentInMax = 0, currentInMin = 0;
-      let currentOutMax = 0, currentOutMin = 0;
+      let currentInMax = 0,
+        currentInMin = 0;
+      let currentOutMax = 0,
+        currentOutMin = 0;
 
-      // KLONING KARAKTERISTIK MRTG ORIGINAL (Hanya untuk 4 interface aktif):
-      if (i === 0) { 
-        // ether1: Dominan IN, OUT sangat kecil
-        currentInMax = inMax;          currentInMin = inMin;
-        currentOutMax = outMax * 0.05; currentOutMin = outMin * 0.05;
-      } else if (i === 2) { 
-        // ether3: Trafik Kecil
-        currentInMax = inMax * 0.01;   currentInMin = inMin * 0.001;
-        currentOutMax = outMax * 0.01; currentOutMin = outMin * 0.001;
-      } else if (i === 4) { 
-        // ether5: DEAD PORT (-nan bps)
-        currentInMax = 0; currentInMin = 0;
-        currentOutMax = 0; currentOutMin = 0;
-      } else if (i === 5) { 
-        // LAN: OUT Sangat besar, IN sedang
-        currentInMax = inMax * 0.1;    currentInMin = inMin * 0.05;
-        currentOutMax = outMax * 0.8;  currentOutMin = outMin * 0.4;
+      // KLONING POLA TRAFIK DARI SCREENSHOT REFERENSI MRTG:
+      if (i === 0) {
+        // ether1: Trafik kecil
+        currentInMax = 200_000;
+        currentInMin = 50_000; // 50-200 kbps
+        currentOutMax = outMax * 2.5;
+        currentOutMin = outMax * 1;
+      } else if (i === 1) {
+        // ether2: Trafik kecil
+        currentInMax = 150_000;
+        currentInMin = 40_000;
+        currentOutMax = 250_000;
+        currentOutMin = 60_000; // 60-250 kbps
+      } else if (i === 2) {
+        // ether3 (UTAMA): OUT DAN IN PALING TEBAL!
+        currentInMax = 150_000;
+        currentInMin = 40_000;
+        currentOutMax = outMax * 1.4;
+        currentOutMin = outMax * 1;
+      } else if (i === 3) {
+        // ether4: Trafik sedang
+        currentInMax = inMax * 1.5;
+        currentInMin = inMax * 1; // 30-85% dari max
+        currentOutMax = 600_000;
+        currentOutMin = 150_000;
+      } else if (i === 4) {
+        // ether5 (Dead Port): Kabel dicabut. Limit 0 agar grafiknya kosong sempurna.
+        currentInMax = 0;
+        currentInMin = 0;
+        currentOutMax = 0;
+        currentOutMin = 0;
+      } else if (i === 5) {
+        // LAN: Trafik sedang
+        currentInMax = inMax * 1;
+        currentInMin = inMax * 0.3; // 30-100% dari max
+        currentOutMax = outMax * 0.3;
+        currentOutMin = outMax * 0.1;
       }
 
+      // Gunakan base seed yang unik untuk tiap interface agar karakteristiknya berbeda total
+      // Setiap site akan punya personality traits yang unik
+      const inSeed = index * 7919 + i * 1337; // Prime numbers untuk distribusi unik
+      const outSeed = index * 7919 + i * 1337 + 997; // Offset prime untuk OUT yang berbeda
+
       return {
-        // Gunakan arrayIndex agar ID tidak bentrok saat memperbarui data lama
-        id: existingLoad?.interfaces[arrayIndex]?.id || `iface-${index}-${i}`,
+        id: existingLoad?.interfaces[i]?.id || `iface-${index}-${i}`,
         name: ifaceName,
-        // Ambil warna sesuai urutannya dari defaults.ts
         colorIn: INTERFACE_COLORS[i].in,
         colorOut: INTERFACE_COLORS[i].out,
-        // Generate data dengan variasi unik per site + efek outage/random
+        // Traffic In - seed unik
         dataIn: generateSmoothData(
           startTs,
           now,
           currentInMin,
           currentInMax,
-          index * 100 + i,
+          inSeed,
           interval,
           isCCTV,
         ),
+        // Traffic Out - seed berbeda total agar tidak correlated
         dataOut: generateSmoothData(
           startTs,
           now,
           currentOutMin,
           currentOutMax,
-          index * 200 + i,
+          outSeed,
           interval,
           isCCTV,
         ),
