@@ -131,6 +131,9 @@ export function Chart({
   const timeRange = endTs - startTs || 1;
   const getX = (ts: number) => PAD.left + ((ts - startTs) / timeRange) * chartW;
 
+  // Ukuran kotak grid yang diinginkan (dalam pixel) - agar persegi sempurna
+  const gridPixelSize = 25;
+
   // Logika Interval Sumbu Y yang "Cantik" (RRDTool Style) - FIXED STEPS
   const { finalAxisMax, yTicks, getY, zeroY } = useMemo(() => {
     // PAKSA step tetap berdasarkan axisMax untuk konsistensi
@@ -221,28 +224,13 @@ export function Chart({
     return top + bottom + "Z";
   };
 
-  const xTickCount = width < 600 ? 4 : 8;
+  const xTickCount = width < 600 ? 3 : 5; // Kurangi ticks agar grid lebih kotak
   const xTicks = [];
   const step = timeRange / xTickCount;
   for (let i = 0; i <= xTickCount; i++) {
     const ts = startTs + step * i;
     xTicks.push({ ts, x: getX(ts) });
   }
-
-  // Grid Styles - Dual Layer System
-  const GRID_STYLE = {
-    background: {
-      stroke: "rgba(255, 255, 255, 0.15)", // Putih sangat tipis
-      width: "0.3",
-      dash: "none"
-    },
-    inner: {
-      stroke: "#666666", // Abu-abu lebih gelap & kontras
-      width: "1",
-      dash: "4,4", // Efek putus-putus khas RRDTool
-      opacity: "0.4"
-    }
-  };
 
   // Helper format waktu NOC Style (Cerdas / Dinamis)
   const formatXLabel = (ts: number, isLast: boolean) => {
@@ -272,7 +260,40 @@ export function Chart({
 
   return (
     <svg width={width} height={height} style={{ background: "transparent" }}>
-      {/* --- LAYER 1: Background Area Plot --- */}
+      <defs>
+        {/* PATTERN 1: Grid Dasar (Abu-abu tua - Solid & Tipis - Di bawah data) */}
+        <pattern 
+          id="baseGrid" 
+          width={gridPixelSize} 
+          height={gridPixelSize} 
+          patternUnits="userSpaceOnUse"
+        >
+          <path 
+            d={`M ${gridPixelSize} 0 L 0 0 0 ${gridPixelSize}`} 
+            fill="none" 
+            stroke="#555555" 
+            strokeWidth="0.5"
+          />
+        </pattern>
+
+        {/* PATTERN 2: Grid Overlay (Abu-abu tua - Dashed/Putus-putus - Di atas data) */}
+        <pattern 
+          id="dashedGrid" 
+          width={gridPixelSize} 
+          height={gridPixelSize} 
+          patternUnits="userSpaceOnUse"
+        >
+          <path 
+            d={`M ${gridPixelSize} 0 L 0 0 0 ${gridPixelSize}`} 
+            fill="none" 
+            stroke="#444444" 
+            strokeWidth="1"
+            strokeDasharray="2,3" // Putus-putus: 2px on, 3px off
+          />
+        </pattern>
+      </defs>
+
+      {/* --- LAYER 1: Plot Area Background --- */}
       <rect
         x={PAD.left}
         y={PAD.top}
@@ -282,31 +303,14 @@ export function Chart({
         stroke="none"
       />
 
-      {/* --- LAYER 2: Grid TIPIS (Latar Belakang & Label) --- */}
-      <g id="background-grid">
-        {yTicks.map((tick, i) => (
-          <line
-            key={`bg-y-${i}`}
-            x1={PAD.left - 5} // Menjorok sedikit ke area label
-            y1={tick.y}
-            x2={PAD.left + chartW}
-            y2={tick.y}
-            stroke={GRID_STYLE.background.stroke}
-            strokeWidth={GRID_STYLE.background.width}
-          />
-        ))}
-        {xTicks.map((tick, i) => (
-          <line
-            key={`bg-x-${i}`}
-            x1={tick.x}
-            y1={PAD.top}
-            x2={tick.x}
-            y2={PAD.top + chartH + 5} // Menjorok 5px ke arah teks label
-            stroke={GRID_STYLE.background.stroke}
-            strokeWidth={GRID_STYLE.background.width}
-          />
-        ))}
-      </g>
+      {/* --- LAYER 2: Grid Dasar (Di bawah data) --- */}
+      <rect
+        x={PAD.left}
+        y={PAD.top}
+        width={chartW}
+        height={chartH}
+        fill="url(#baseGrid)"
+      />
 
       {/* --- LAYER 3: Render Data Area (Stacked) --- */}
       {[...site.interfaces].reverse().map((iface) => {
@@ -340,35 +344,15 @@ export function Chart({
         }
       })}
 
-      {/* --- LAYER 4: Grid TEBAL & PUTUS-PUTUS (Di Atas Data) --- */}
-      <g id="inner-grid" style={{ pointerEvents: 'none' }}>
-        {yTicks.map((tick, i) => (
-          <line
-            key={`inner-y-${i}`}
-            x1={PAD.left}
-            y1={tick.y}
-            x2={PAD.left + chartW}
-            y2={tick.y}
-            stroke={GRID_STYLE.inner.stroke}
-            strokeWidth={GRID_STYLE.inner.width}
-            strokeDasharray={GRID_STYLE.inner.dash}
-            opacity={GRID_STYLE.inner.opacity}
-          />
-        ))}
-        {xTicks.map((tick, i) => (
-          <line
-            key={`inner-x-${i}`}
-            x1={tick.x}
-            y1={PAD.top}
-            x2={tick.x}
-            y2={PAD.top + chartH}
-            stroke={GRID_STYLE.inner.stroke}
-            strokeWidth={GRID_STYLE.inner.width}
-            strokeDasharray={GRID_STYLE.inner.dash}
-            opacity={GRID_STYLE.inner.opacity}
-          />
-        ))}
-      </g>
+      {/* --- LAYER 4: Grid Overlay (Dashed/Putus-putus di atas data) --- */}
+      <rect
+        x={PAD.left}
+        y={PAD.top}
+        width={chartW}
+        height={chartH}
+        fill="url(#dashedGrid)"
+        style={{ pointerEvents: 'none' }}
+      />
 
       {/* --- LAYER 5: Zero Line (Garis Tengah) --- */}
       {site.type === "traffic" && (
@@ -386,9 +370,10 @@ export function Chart({
       {yTicks.map(({ y, label }, i) => (
         <text
           key={`label-y-${i}`}
-          x={PAD.left - 8}
-          y={y + 4}
+          x={PAD.left - 10}
+          y={y}
           textAnchor="end"
+          dominantBaseline="central"
           fill={THEME.text}
           fontSize="10"
           fontFamily="Arial, sans-serif"

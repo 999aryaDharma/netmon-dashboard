@@ -76,9 +76,9 @@ export function createDefaultSites(
   } else if (isCCTV) {
     // CCTV: 6 M (Label: 0, 1.2 M, 2.4 M, 3.6 M, 4.8 M, 6 M)
     axisMaxLoad = 6_000_000;
-    inMax = 2_400_000;    // Turun ke 2.4M (40% dari max)
-    inMin = 1_200_000;    // Turun ke 1.2M
-    outMax = 800_000;
+    inMax = 1_800_000;    // Turun ke 1.8M (30% dari max) - agar tidak penuh
+    inMin = 900_000;      // Turun ke 900k
+    outMax = 600_000;     // Turun ke 600k
     outMin = 100_000;
   } else {
     axisMaxLoad = 100_000_000; // Default 100 Mbps
