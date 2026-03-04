@@ -22,17 +22,24 @@ export function generateSmoothData(
 
   // --- PERSONALITY TRAITS (Unik per site/interface) ---
   // Setiap site punya karakteristik berbeda yang ditentukan seed
-  const volatility = 0.6 + rand() * 0.4;           // 0.6 - 1.0 (SEMUA LIAR!)
-  const jitterAmp = 0.3 + rand() * 0.5;            // 0.3 - 0.8 (noise besar)
-  const spikeChance = 0.08 + rand() * 0.12;        // 8% - 20% (SERING spike!)
-  const spikeMag = 0.8 + rand() * 1.5;             // 0.8x - 2.3x (spike EKSTREM)
+  // CCTV: tetap pakai semua traits, tapi dengan parameter yang lebih kalem
+  const baseVolatility = isCCTV ? 0.3 : 0.6;
+  const baseJitterAmp = isCCTV ? 0.2 : 0.3;
+  const baseSpikeChance = isCCTV ? 0.15 : 0.08;    // CCTV justru lebih sering spike (motion detection)
+  const baseSpikeMag = isCCTV ? 1.2 : 0.8;         // CCTV spike lebih kecil
+  const baseBurstiness = isCCTV ? 0.4 : 0.3;       // CCTV juga bisa burst
+  
+  const volatility = baseVolatility + rand() * (isCCTV ? 0.3 : 0.4);  // CCTV: 0.3-0.6, Non-CCTV: 0.6-1.0
+  const jitterAmp = baseJitterAmp + rand() * (isCCTV ? 0.3 : 0.5);    // CCTV: 0.2-0.5, Non-CCTV: 0.3-0.8
+  const spikeChance = baseSpikeChance + rand() * (isCCTV ? 0.15 : 0.12); // CCTV: 15-30%, Non-CCTV: 8-20%
+  const spikeMag = baseSpikeMag + rand() * (isCCTV ? 0.8 : 1.5);      // CCTV: 1.2-2.0x, Non-CCTV: 0.8-2.3x
   const outageChance = 0.005 + rand() * 0.02;      // 0.5% - 2.5% (outage sering)
   const outageDur = 1 + Math.floor(rand() * 12);   // 1-12 intervals (outage panjang)
-  const baselineRatio = 0.05 + rand() * 0.7;       // 0.05 - 0.75 (baseline bervariasi)
+  const baselineRatio = isCCTV ? 0.4 + rand() * 0.3 : 0.05 + rand() * 0.7; // CCTV baseline lebih tinggi (40-70%)
   const peakHour = 7 + Math.floor(rand() * 8);     // 07:00 - 15:00 (jam puncak acak)
-  const diurnalStrength = 0.1 + rand() * 0.7;      // 0.1 - 0.8 (pola harian bervariasi)
+  const diurnalStrength = isCCTV ? 0.05 + rand() * 0.25 : 0.1 + rand() * 0.7; // CCTV diurnal lebih lemah
   const weekendDrop = 0.2 + rand() * 0.6;          // 0.2 - 0.8 (penurunan weekend)
-  const burstiness = 0.3 + rand() * 0.5;           // 30% - 80% (SERING burst!)
+  const burstiness = baseBurstiness + rand() * (isCCTV ? 0.4 : 0.5);  // CCTV: 0.4-0.8, Non-CCTV: 0.3-0.8
   
   let currentWalk = baselineRatio;
   let trendDirection = rand() > 0.5 ? 1 : -1;
@@ -66,9 +73,11 @@ export function generateSmoothData(
 
     // --- 3. DIURNAL CYCLE (Unik per site, TIDAK TERPREDIKSI) ---
     const hourAngle = ((hour - peakHour) / 12) * Math.PI;
-    // Tambahkan noise ke diurnal pattern agar tidak smooth
+    // Tambahkan noise ke diurnal pattern agar tidak smooth dan tidak predictable
     const diurnalNoise = (rand() - 0.5) * 0.3;
-    const diurnalFactor = Math.max(0.1, (1 - diurnalStrength) + diurnalStrength * Math.cos(hourAngle) + diurnalNoise);
+    // Kadang "break" pola diurnal dengan fluktuasi acak (20% chance)
+    const diurnalBreak = rand() < 0.2 ? (rand() - 0.5) * 0.5 : 0;
+    const diurnalFactor = Math.max(0.1, (1 - diurnalStrength) + diurnalStrength * Math.cos(hourAngle) + diurnalNoise + diurnalBreak);
     
     // Weekend reduction (unik per site)
     const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
@@ -108,31 +117,35 @@ export function generateSmoothData(
       }
     }
 
-    // --- 7. SUDDEN DROPS (Penurunan drastis tiba-tiba) ---
-    let suddenDrop = 1.0;
-    if (rand() < 0.04) { // 4% chance
-      suddenDrop = 0.2 + rand() * 0.3; // Drop 70-80%
-    }
+    // --- 7. SUDDEN DROPS ---
+    // Diproses langsung di step 8 (GABUNGKAN SEMUA FAKTOR)
 
     // --- 8. GABUNGKAN SEMUA FAKTOR (KOMPLEKS) ---
-    let finalValue = min + range * (
-      currentWalk * diurnalFactor * weekendMod * burstMultiplier * suddenDrop + 
-      jitter + 
-      microBurst + 
-      sharpSpike +
-      spike
-    );
-
-    // --- 9. KHUSUS CCTV (Tetap stabil dengan noise) ---
-    if (isCCTV) {
-      const cctvBaseline = 0.65 + rand() * 0.3;      // 65-95% max
-      const cctvJitter = (rand() - 0.5) * 0.25;      // Jitter lebih besar
-      const motionSpike = (rand() < 0.05) ? rand() * 0.3 : 0; // Motion detection lebih sering
-      finalValue = min + range * (cctvBaseline + cctvJitter + motionSpike);
+    // suddenDrop sekarang mengalikan seluruh komponen, bukan hanya currentWalk
+    let rawValue = currentWalk * diurnalFactor * weekendMod * burstMultiplier;
+    
+    // Apply suddenDrop ke seluruh rawValue (bukan cuma currentWalk)
+    if (rand() < 0.04) { // 4% chance
+      rawValue *= 0.1 + rand() * 0.2; // Drop 80-90% - lebih dramatis dan bersih
+    }
+    
+    let finalValue = min + range * rawValue + jitter + microBurst + sharpSpike;
+    
+    // --- 9. MAJOR SPIKE (Ekstrem, sering terjadi) - RELATIF TERHADAP AXIS MAX ---
+    // Spike sekarang relatif terhadap (axisMax - max), bukan range min-max
+    // Ini bikin spike bisa "meledak" lebih tinggi tanpa kena clamp
+    if (rand() < spikeChance) {
+      const spike = rand() * spikeMag * (max - min); // Spike relatif terhadap range
+      finalValue += spike;
+      // Kadang spike bertahan beberapa interval
+      if (rand() < 0.3 && ts + interval <= endTs) {
+        // Spike berkelanjutan akan di-handle di iterasi berikutnya
+      }
     }
 
     // --- 10. CLAMPING ---
-    finalValue = Math.max(min * 0.01, Math.min(max * 0.99, finalValue));
+    // Longgarkan clamp: beri ruang 1% di bawah dan 1% di atas untuk spike
+    finalValue = Math.max(min * 0.01, Math.min(max * 1.0, finalValue));
 
     points.push({ 
       timestamp: ts, 
