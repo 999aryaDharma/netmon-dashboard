@@ -48,6 +48,13 @@ export async function generateWeeklyReportDocx(
     stringPeriode = `${startDate.getDate()} ${bulan[startDate.getMonth()]} - ${endDate.getDate()} ${bulan[endDate.getMonth()]} ${endDate.getFullYear()}`;
   }
 
+  // Nama bulan untuk placeholder {BULAN}
+  const namaBulan = bulan[endDate.getMonth()];
+  
+  // Tanggal pembuatan laporan untuk placeholder {tanggal_buat}
+  const sekarang = new Date();
+  const tanggalBuat = `${sekarang.getDate()} ${bulan[sekarang.getMonth()]} ${sekarang.getFullYear()}, ${sekarang.getHours().toString().padStart(2, '0')}:${sekarang.getMinutes().toString().padStart(2, '0')}:${sekarang.getSeconds().toString().padStart(2, '0')}`;
+
   try {
     const response = await fetch("/template-laporan.docx");
 
@@ -87,6 +94,8 @@ export async function generateWeeklyReportDocx(
     doc.render({
       ...imageMap,
       periode_laporan: stringPeriode,
+      BULAN: namaBulan,
+      tanggal_buat: tanggalBuat,
     });
 
     const out = doc.getZip().generate({
@@ -95,10 +104,7 @@ export async function generateWeeklyReportDocx(
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
 
-    saveAs(
-      out,
-      `Laporan_NOC_Mingguan_${stringPeriode.replace(/\s/g, "_")}.docx`,
-    );
+    saveAs(out, `Laporan_Mingguan_${stringPeriode.replace(/\s/g, "_")}.docx`);
     return true;
   } catch (error) {
     console.error("Gagal men-generate laporan Word:", error);
