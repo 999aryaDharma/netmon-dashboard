@@ -39,6 +39,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [graphFilter, setGraphFilter] = useState<
     "all" | "traffic" | "load" | "ping"
   >("all");
+  const [regionFilter, setRegionFilter] = useState<"all" | "bali" | "banten">("all");
   const [showAllSites, setShowAllSites] = useState(false);
   const [detailChart, setDetailChart] = useState<Site | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -271,9 +272,24 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
   const sitesToDisplay = selectedSite
     ? sites.filter((s) => s.id === selectedSite)
-    : showAllSites
-      ? filteredSites
-      : filteredSites.slice(0, 12);
+    : (() => {
+        let result = showAllSites ? filteredSites : filteredSites.slice(0, 12);
+        // Filter by region
+        if (regionFilter === "bali") {
+          result = result.filter((s) =>
+            s.name.toLowerCase().includes("bali") ||
+            s.name.toLowerCase().includes("denpasar") ||
+            s.name.toLowerCase().includes("gianyar") ||
+            s.name.toLowerCase().includes("tabanan") ||
+            s.name.toLowerCase().includes("badung")
+          );
+        } else if (regionFilter === "banten") {
+          result = result.filter((s) =>
+            s.name.toLowerCase().includes("banten")
+          );
+        }
+        return result;
+      })();
   const hasMoreSites =
     filteredSites.length > 12 && !selectedSite && !showAllSites;
 
@@ -509,6 +525,30 @@ export function Dashboard({ onLogout }: DashboardProps) {
             {type}
           </button>
         ))}
+
+        <span style={{ fontSize: "11px", color: "#888" }}>|</span>
+
+        <span style={{ fontSize: "11px", color: "#888" }}>Region:</span>
+        {(["all", "bali", "banten"] as const).map((region) => (
+          <button
+            key={region}
+            onClick={() => setRegionFilter(region)}
+            style={{
+              background: regionFilter === region ? "#0a2a1a" : "none",
+              border:
+                regionFilter === region ? "1px solid #33cc00" : "1px solid #333",
+              borderRadius: "3px",
+              color: regionFilter === region ? "#33cc00" : "#888",
+              fontFamily: "JetBrains Mono, monospace",
+              fontSize: "11px",
+              padding: "4px 12px",
+              cursor: "pointer",
+              textTransform: "capitalize",
+            }}
+          >
+            {region}
+          </button>
+        ))}
       </div>
 
       <div
@@ -542,57 +582,26 @@ export function Dashboard({ onLogout }: DashboardProps) {
             }}
           >
             {sitesToDisplay.map((site) => (
-              <div key={site.id}>
-                <div
-                  style={{
-                    padding: "12px 16px",
-                    background: "#222629",
-                    borderBottom: "1px solid #333",
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: "16px",
-                  }}
-                >
-                  <h2
-                    style={{
-                      fontSize: "16px",
-                      color: "#33cc00",
-                      margin: 0,
-                      fontWeight: 600,
-                    }}
-                  >
-                    {site.name}
-                  </h2>
-                  <button
-                    onClick={() => setEditSite(site)}
-                    style={{
-                      background: "none",
-                      border: "1px solid #444",
-                      color: "#ccc",
-                      cursor: "pointer",
-                      fontSize: "11px",
-                      padding: "4px 12px",
-                      borderRadius: "3px",
-                      fontFamily: "JetBrains Mono, monospace",
-                    }}
-                  >
-                    EDIT
-                  </button>
-                </div>
-                <GridSiteCard
-                  site={site}
-                  timeRange={timeRange}
-                  onOpenDetail={() => setDetailChart(site)}
-                />
-              </div>
+              <GridSiteCard
+                key={site.id}
+                site={site}
+                timeRange={timeRange}
+                onOpenDetail={() => setDetailChart(site)}
+                onEdit={() => setEditSite(site)}
+              />
             ))}
           </div>
         )}
 
         {/* Tombol Show All / Show Less */}
         {!loading && hasMoreSites && !showAllSites && (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: "24px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginTop: "24px",
+            }}
+          >
             <button
               onClick={() => setShowAllSites(true)}
               style={{
@@ -612,7 +621,13 @@ export function Dashboard({ onLogout }: DashboardProps) {
           </div>
         )}
         {!loading && showAllSites && (
-          <div style={{ display: "flex", justifyContent: "center", marginTop: "24px" }}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "center",
+              marginTop: "24px",
+            }}
+          >
             <button
               onClick={() => setShowAllSites(false)}
               style={{
@@ -1458,28 +1473,87 @@ function DetailChartModal({
   );
 }
 
-// === KOMPONEN BAWAH (GridSiteCard, dsb) DIBIARKAN SAMA SEPERTI SEBELUMNYA ===
+// === KOMPONEN GRID SITE CARD ===
 function GridSiteCard({
   site,
   timeRange,
   onOpenDetail,
+  onEdit,
 }: {
   site: Site;
   timeRange: TimeRange;
   onOpenDetail: () => void;
+  onEdit: () => void;
 }) {
   return (
     <div
       style={{
-        background: "#333333",
+        background: "#2C3034",
         border: "1px solid #444",
-        borderRadius: "3px",
+        borderRadius: "4px",
         overflow: "hidden",
-        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        position: "relative",
       }}
-      onClick={onOpenDetail}
     >
-      <ResponsiveChart site={site} timeRange={timeRange} />
+      {/* Header Area */}
+      <div
+        style={{
+          padding: "32px 16px 0px 16px",
+          display: "flex",
+          justifyContent: "space-between",
+        }}
+      >
+        <h2
+          style={{
+            fontSize: "12px",
+            color: "#FFFFFF",
+            marginBottom: -10,
+            fontWeight: 500,
+            fontFamily: "Roboto, sans-serif",
+            letterSpacing: "0px",
+            whiteSpace: "nowrap",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            maxWidth: "90%",
+          }}
+        >
+          {site.name}
+        </h2>
+
+        {/* Tombol EDIT diletakkan secara absolut di pojok kanan atas */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onEdit();
+          }}
+          style={{
+            position: "absolute",
+            top: "6px",
+            right: "6px",
+            background: "none",
+            border: "1px solid #444",
+            color: "#666",
+            cursor: "pointer",
+            fontSize: "9px",
+            padding: "2px 6px",
+            borderRadius: "3px",
+            fontFamily: "JetBrains Mono, monospace",
+            zIndex: 10,
+          }}
+        >
+          EDIT
+        </button>
+      </div>
+
+      {/* Chart Area */}
+      <div
+        onClick={onOpenDetail}
+        style={{ cursor: "pointer", paddingBottom: "4px" }}
+      >
+        <ResponsiveChart site={site} timeRange={timeRange} />
+      </div>
     </div>
   );
 }

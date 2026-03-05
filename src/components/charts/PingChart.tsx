@@ -55,7 +55,7 @@ export function PingChart({
   height: number;
 }) {
   // Padding yang lebih lebar untuk mengakomodasi teks yang diputar
-  const PAD = { top: 35, right: 60, bottom: 30, left: 75 };
+  const PAD = { top: 55, right: 60, bottom: 30, left: 75 };
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
@@ -109,18 +109,19 @@ export function PingChart({
   const pathLoss = makePath(lossIn, getY_Loss);
 
   // --- Ticks Generator ---
-  // Y Ticks (RTT Kiri) - Buat 5 level
+  // Y Ticks (RTT Kiri) - Buat 5 level dengan label "ms"
   const yTicksRtt = [];
   for (let i = 0; i <= 5; i++) {
     const val = (axisMaxRtt / 5) * i;
     const y = getY_Rtt(val);
-    yTicksRtt.push({ val, y });
+    yTicksRtt.push({ val, y, label: `${val} ms` });
   }
 
-  // Y Ticks (Loss Kanan) - Fixed 0, 25, 50, 75, 100
+  // Y Ticks (Loss Kanan) - Fixed 0, 25, 50, 75, 100 dengan label "%"
   const yTicksLoss = [0, 25, 50, 75, 100].map((val) => ({
     val,
     y: getY_Loss(val),
+    label: `${val}%`,
   }));
 
   // X Ticks (Waktu) - Targetkan sekitar 8-10 ticks
@@ -137,24 +138,33 @@ export function PingChart({
     const date = new Date(ts);
     const rangeHours = timeRange / (1000 * 60 * 60); // Hitung rentang waktu dalam satuan Jam
 
+    // Format yyyy-m-dd
+    const yyyy = date.getFullYear();
+    const m = date.getMonth() + 1; // 'm' tanpa 0 di depan (1-12)
+    const dd = date.getDate().toString().padStart(2, "0"); // 'dd' dengan 0 di depan (01-31)
+    
+    // Format jam hh:mm
+    const hh = date.getHours().toString().padStart(2, "0");
+    const min = date.getMinutes().toString().padStart(2, "0");
+
+    const formattedDate = `${yyyy}-${m}-${dd}`;
+
     if (rangeHours <= 24) {
-      // Jika rentang <= 24 Jam: Tampilkan jam (09:00), khusus di paling ujung tampilkan tanggal (25. Feb)
-      if (isLast) {
-        return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).replace(" ", ". ");
-      }
-      return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
-      
+      // Jika rentang <= 24 Jam: Tampilkan jam (09:00), di titik terakhir tampilkan tanggal (2026-3-05)
+      if (isLast) return formattedDate;
+      return `${hh}:${min}`;
+
     } else if (rangeHours <= 168) { // 168 jam = 7 Hari
-      // Jika rentang 2 - 7 Hari: Tampilkan Hari & Tanggal (contoh: Mon 20 Feb)
-      return date.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }).replace(/,/g, "");
-      
+      // Jika rentang 2 - 7 Hari: Tampilkan Tanggal & Jam (2026-3-05 09:00)
+      return `${formattedDate} ${hh}:${min}`;
+
     } else if (rangeHours <= 8760) { // 8760 jam = 1 Tahun
-      // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal & Bulan (contoh: 20 Feb)
-      return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
-      
+      // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal (2026-3-05)
+      return formattedDate;
+
     } else {
-      // Jika > 1 Tahun: Tampilkan Bulan & Tahun (contoh: Feb 2026)
-      return date.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+      // Jika > 1 Tahun: Tampilkan Tanggal (2026-3-05)
+      return formattedDate;
     }
   };
 
@@ -172,7 +182,7 @@ export function PingChart({
       />
 
       {/* Grid Lines Horizontal & Label Y Kiri (RTT) */}
-      {yTicksRtt.map(({ val, y }, i) => (
+      {yTicksRtt.map(({ val, y, label }, i) => (
         <g key={`rtt-${i}`}>
           {/* Garis Grid Halus */}
           <line
@@ -192,13 +202,13 @@ export function PingChart({
             fontSize="10"
             fontFamily="Arial, sans-serif"
           >
-            {val.toFixed(0)}
+            {label}
           </text>
         </g>
       ))}
 
       {/* Label Y Kanan (Loss) */}
-      {yTicksLoss.map(({ val, y }, i) => (
+      {yTicksLoss.map(({ val, y, label }, i) => (
         <text
           key={`loss-${i}`}
           x={PAD.left + chartW + 8}
@@ -208,7 +218,7 @@ export function PingChart({
           fontSize="10"
           fontFamily="Arial, sans-serif"
         >
-          {val.toFixed(0)}
+          {label}
         </text>
       ))}
 
@@ -241,34 +251,6 @@ export function PingChart({
         );
       })}
 
-      {/* --- Judul Sumbu Y di Ujung Atas --- */}
-
-      {/* Judul Kiri: Latency (ms) */}
-      <text
-        x={PAD.left - 8}
-        y={PAD.top - 14}
-        textAnchor="end"
-        fill={THEME.axisTitle}
-        fontSize="10"
-        fontWeight="bold"
-        fontFamily="Arial, sans-serif"
-      >
-        Latency (ms)
-      </text>
-
-      {/* Judul Kanan: Loss (%) */}
-      <text
-        x={width - PAD.right + 8}
-        y={PAD.top - 14}
-        textAnchor="start"
-        fill={THEME.axisTitle}
-        fontSize="10"
-        fontWeight="bold"
-        fontFamily="Arial, sans-serif"
-      >
-        Loss (%)
-      </text>
-
       {/* --- Data Lines --- */}
       {/* Garis Loss (Merah) */}
       <path
@@ -289,7 +271,7 @@ export function PingChart({
       {/* Border Kotak Luar Grafik */}
       <rect
         x={PAD.left}
-        y={PAD.top}
+        y={PAD.top - 10}
         width={chartW}
         height={chartH}
         fill="none"

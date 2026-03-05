@@ -62,23 +62,23 @@ export function createDefaultSites(
   if (isBackbone) {
     // Internet Backbone: 1.0 G (Label: 0, 200 M, 400 M, 600 M, 800 M, 1000 M)
     axisMaxLoad = 1_000_000_000;
-    inMax = 400_000_000;  // Turun ke 400M (40% dari max) - agar tidak penuh
-    inMin = 100_000_000;  // Turun ke 100M
+    inMax = 400_000_000; // Turun ke 400M (40% dari max) - agar tidak penuh
+    inMin = 100_000_000; // Turun ke 100M
     outMax = 150_000_000;
     outMin = 40_000_000;
   } else if (isIntegration) {
     // Integration Network: 40 M (Label: 0, 8 M, 16 M, 24 M, 32 M, 40 M)
     axisMaxLoad = 40_000_000;
-    inMax = 16_000_000;   // Turun ke 16M (40% dari max)
-    inMin = 4_000_000;    // Turun ke 4M
+    inMax = 16_000_000; // Turun ke 16M (40% dari max)
+    inMin = 4_000_000; // Turun ke 4M
     outMax = 9_000_000;
     outMin = 1_000_000;
   } else if (isCCTV) {
     // CCTV: 6 M (Label: 0, 1.2 M, 2.4 M, 3.6 M, 4.8 M, 6 M)
     axisMaxLoad = 6_000_000;
-    inMax = 1_800_000;    // Turun ke 1.8M (30% dari max) - agar tidak penuh
-    inMin = 900_000;      // Turun ke 900k
-    outMax = 600_000;     // Turun ke 600k
+    inMax = 1_800_000; // Turun ke 1.8M (30% dari max) - agar tidak penuh
+    inMin = 900_000; // Turun ke 900k
+    outMax = 600_000; // Turun ke 600k
     outMin = 100_000;
   } else {
     axisMaxLoad = 100_000_000; // Default 100 Mbps
@@ -134,8 +134,8 @@ export function createDefaultSites(
         currentOutMin = outMax * 1;
       } else if (i === 3) {
         // ether4: Trafik sedang - PERLEBAR RANGE agar tidak terlalu sempit
-        currentInMax = inMax * 0.8;  // Turun dari 1.5x ke 0.8x
-        currentInMin = inMax * 0.3;  // Naik dari 1.0x ke 0.3x (range lebih lebar: 30-80% dari max)
+        currentInMax = inMax * 0.8; // Turun dari 1.5x ke 0.8x
+        currentInMin = inMax * 0.3; // Naik dari 1.0x ke 0.3x (range lebih lebar: 30-80% dari max)
         currentOutMax = 600_000;
         currentOutMin = 150_000;
       } else if (i === 4) {
@@ -146,8 +146,8 @@ export function createDefaultSites(
         currentOutMin = 0;
       } else if (i === 5) {
         // LAN: Trafik sedang - PERLEBAR RANGE
-        currentInMax = inMax * 0.9;  // Turun dari 1.0x ke 0.9x
-        currentInMin = inMax * 0.2;  // Naik dari 0.3x ke 0.2x (range lebih lebar: 20-90% dari max)
+        currentInMax = inMax * 0.9; // Turun dari 1.0x ke 0.9x
+        currentInMin = inMax * 0.2; // Naik dari 0.3x ke 0.2x (range lebih lebar: 20-90% dari max)
         currentOutMax = outMax * 0.3;
         currentOutMin = outMax * 0.1;
       }

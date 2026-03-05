@@ -9,24 +9,25 @@ const THEME = {
 };
 
 /**
- * Meniru format RRDTool: 
+ * Meniru format RRDTool:
  * - Memberikan spasi antara angka dan unit (misal: "5 M", "2.5 M")
  * - Menghilangkan desimal jika bilangan bulat (misal: "10 M" bukan "10.0 M")
+ * - Menampilkan satuan yang sesuai (bps, kbps, Mbps, Gbps)
  */
-function formatRRDLabel(v: number): string {
+function formatRRDLabel(v: number, unit: string = "bps"): string {
   const abs = Math.abs(v);
-  if (abs === 0) return "0";
+  if (abs === 0) return `0 ${unit}`;
   const sign = v < 0 ? "-" : "";
-  
+
   let val = abs;
-  let unit = "";
-  if (abs >= 1_000_000_000) { val = abs / 1_000_000_000; unit = "G"; }
-  else if (abs >= 1_000_000) { val = abs / 1_000_000; unit = "M"; }
-  else if (abs >= 1_000) { val = abs / 1_000; unit = "k"; }
-  
+  let prefix = "";
+  if (abs >= 1_000_000_000) { val = abs / 1_000_000_000; prefix = "G"; }
+  else if (abs >= 1_000_000) { val = abs / 1_000_000; prefix = "M"; }
+  else if (abs >= 1_000) { val = abs / 1_000; prefix = "k"; }
+
   // RRDTool Style: 1 desimal jika bukan bulat (2.5), tanpa desimal jika bulat (5)
   const formatted = val % 1 === 0 ? val.toString() : val.toFixed(1);
-  return `${sign}${formatted} ${unit}`.trim();
+  return `${sign}${formatted} ${prefix}${unit}`.trim();
 }
 
 export function Chart({
@@ -191,11 +192,12 @@ export function Chart({
     
     // 6. Generate Ticks
     const ticks = [];
+    const unit = site.unit || "bps";
     for (let v = 0; v <= finalMax; v += step) {
-      ticks.push({ val: v, y: getYFunc(v), label: formatRRDLabel(v) });
+      ticks.push({ val: v, y: getYFunc(v), label: formatRRDLabel(v, unit) });
       if (site.type === "traffic" && v !== 0) {
         // Untuk sumbu negatif (Out)
-        ticks.push({ val: -v, y: getYFunc(-v), label: formatRRDLabel(-v) });
+        ticks.push({ val: -v, y: getYFunc(-v), label: formatRRDLabel(-v, unit) });
       }
     }
     
@@ -237,24 +239,33 @@ export function Chart({
     const date = new Date(ts);
     const rangeHours = timeRange / (1000 * 60 * 60); // Hitung rentang waktu dalam satuan Jam
 
+    // Format yyyy-m-dd
+    const yyyy = date.getFullYear();
+    const m = date.getMonth() + 1; // 'm' tanpa 0 di depan (1-12)
+    const dd = date.getDate().toString().padStart(2, "0"); // 'dd' dengan 0 di depan (01-31)
+    
+    // Format jam hh:mm
+    const hh = date.getHours().toString().padStart(2, "0");
+    const min = date.getMinutes().toString().padStart(2, "0");
+
+    const formattedDate = `${yyyy}-${m}-${dd}`;
+
     if (rangeHours <= 24) {
-      // Jika rentang <= 24 Jam: Tampilkan jam (09:00), khusus di paling ujung tampilkan tanggal (25. Feb)
-      if (isLast) {
-        return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" }).replace(" ", ". ");
-      }
-      return date.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+      // Jika rentang <= 24 Jam: Tampilkan jam (09:00), di titik terakhir tampilkan tanggal (2026-3-05)
+      if (isLast) return formattedDate;
+      return `${hh}:${min}`;
 
     } else if (rangeHours <= 168) { // 168 jam = 7 Hari
-      // Jika rentang 2 - 7 Hari: Tampilkan Hari & Tanggal (contoh: Mon 20 Feb)
-      return date.toLocaleDateString("en-GB", { weekday: "short", day: "2-digit", month: "short" }).replace(/,/g, "");
+      // Jika rentang 2 - 7 Hari: Tampilkan Tanggal & Jam (2026-3-05 09:00)
+      return `${formattedDate} ${hh}:${min}`;
 
     } else if (rangeHours <= 8760) { // 8760 jam = 1 Tahun
-      // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal & Bulan (contoh: 20 Feb)
-      return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short" });
+      // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal (2026-3-05)
+      return formattedDate;
 
     } else {
-      // Jika > 1 Tahun: Tampilkan Bulan & Tahun (contoh: Feb 2026)
-      return date.toLocaleDateString("en-GB", { month: "short", year: "numeric" });
+      // Jika > 1 Tahun: Tampilkan Tanggal (2026-3-05)
+      return formattedDate;
     }
   };
 
@@ -408,19 +419,6 @@ export function Chart({
           </g>
         );
       })}
-
-      {/* --- LAYER 8: Axis Title --- */}
-      <text
-        x={PAD.left - 8}
-        y={PAD.top - 12}
-        textAnchor="end"
-        fill={THEME.axisTitle}
-        fontSize="10"
-        fontWeight="bold"
-        fontFamily="Arial, sans-serif"
-      >
-        Bits/sec
-      </text>
 
       {/* --- LAYER 9: Border Luar Kotak Grafik --- */}
       <rect
