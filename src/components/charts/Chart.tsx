@@ -47,6 +47,9 @@ export function Chart({
   const chartW = width - PAD.left - PAD.right;
   const chartH = height - PAD.top - PAD.bottom;
 
+  // Traffic = bidirectional (IN atas, OUT bawah), Load = unidirectional (hanya IN dari bawah)
+  const isBidirectional = site.graphType === "traffic";
+
   let combined: { ts: number; [key: string]: number }[] = [];
   const timeSet = new Set<number>();
 
@@ -181,30 +184,33 @@ export function Chart({
     // 5. Setup getY dan zeroY
     let getYFunc: (v: number) => number;
     let zeroYVal: number;
-    if (site.type === "traffic") {
+    if (isBidirectional) {
+      // Traffic: split axis - IN di atas, OUT di bawah (bidirectional)
       const halfH = chartH / 2;
       zeroYVal = PAD.top + halfH;
       getYFunc = (val: number) => zeroYVal - (val / finalMax) * halfH;
     } else {
+      // Load/Ping: semua dari bawah (unidirectional)
       zeroYVal = PAD.top + chartH;
       getYFunc = (val: number) => zeroYVal - (val / finalMax) * chartH;
     }
-    
+
     // 6. Generate Ticks
     const ticks = [];
     const unit = site.unit || "bps";
     for (let v = 0; v <= finalMax; v += step) {
       ticks.push({ val: v, y: getYFunc(v), label: formatRRDLabel(v, unit) });
-      if (site.type === "traffic" && v !== 0) {
-        // Untuk sumbu negatif (Out)
+      if (isBidirectional && v !== 0) {
+        // Untuk sumbu negatif (Out) - hanya untuk traffic bidirectional
         ticks.push({ val: -v, y: getYFunc(-v), label: formatRRDLabel(-v, unit) });
       }
     }
-    
+
     return { finalAxisMax: finalMax, yTicks: ticks, getY: getYFunc, zeroY: zeroYVal };
   }, [site.axisMax, maxStack, site.type, chartH]);
 
-  // 2. PERBAIKAN GENERATOR AREA: Menerima parameter invertY agar OUT digambar ke bawah
+  // 2. GENERATOR AREA untuk stacked chart
+  // invertY=true untuk OUT (digambar ke bawah dari zero line)
   const makeArea = (keyY0: string, keyY1: string, invertY = false) => {
     if (stacked.length < 2) return "";
     let top = ``;
@@ -336,6 +342,8 @@ export function Chart({
             />
           );
         } else {
+          // Cek apakah ini Load graph (1 arah, hanya IN)
+          const isLoadGraph = iface.dataOut && iface.dataOut.length === 0;
           return (
             <g key={iface.id}>
               <path
@@ -344,12 +352,14 @@ export function Chart({
                 shapeRendering="crispEdges"
                 opacity={1}
               />
-              <path
-                d={makeArea(`${iface.id}_out_y0`, `${iface.id}_out_y1`, true)}
-                fill={iface.colorOut}
-                shapeRendering="crispEdges"
-                opacity={1}
-              />
+              {!isLoadGraph && (
+                <path
+                  d={makeArea(`${iface.id}_out_y0`, `${iface.id}_out_y1`, true)}
+                  fill={iface.colorOut}
+                  shapeRendering="crispEdges"
+                  opacity={1}
+                />
+              )}
             </g>
           );
         }
@@ -366,7 +376,7 @@ export function Chart({
       />
 
       {/* --- LAYER 5: Zero Line (Garis Tengah) --- */}
-      {site.type === "traffic" && (
+      {isBidirectional && (
         <line
           x1={PAD.left}
           y1={zeroY}

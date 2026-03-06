@@ -1,6 +1,12 @@
-import type { Site, SiteInterface } from "../types";
+import type { Site, SiteInterface, SiteRegion } from "../types";
 import { generateSmoothData, generatePingData } from "../utils/dataGen";
 import { INTERFACE_COLORS, LATENCY_COLORS } from "../constants/defaults";
+
+// Warna khusus untuk Banten Load graph (2 interface, 1 arah)
+const BANTEN_COLORS = [
+  { in: "#4baeac", out: "#329795" },
+  { in: "#329795", out: "#4baeac" },
+];
 
 // Helper function untuk merge data tanpa duplikasi timestamp
 export function mergeData(
@@ -28,6 +34,7 @@ export function mergeData(
 export function createDefaultSites(
   name: string,
   index: number,
+  region: SiteRegion = "bali",
   existingSites?: Site[],
   customStartTs?: number,
   customEndTs?: number,
@@ -46,6 +53,15 @@ export function createDefaultSites(
     interval,
   );
 
+  // Helper: Parse kecepatan dari nama site (format: "Nama Site - Available XXX Mbps/Gbps")
+  const parseSpeed = (siteName: string): { value: number; unit: string } | null => {
+    const match = siteName.match(/Available\s+([\d.]+)\s*(Gbps|Mbps)/i);
+    if (match) {
+      return { value: parseFloat(match[1]), unit: match[2].toLowerCase() };
+    }
+    return null;
+  };
+
   // DETEKSI KAPASITAS BERDASARKAN NAMA SITE (SESUAI DOKUMEN LAPORAN)
   const isBackbone = name.toLowerCase().includes("backbone");
   const isIntegration =
@@ -55,17 +71,40 @@ export function createDefaultSites(
     name.toLowerCase().includes("terminal") ||
     name.toLowerCase().includes("toll");
   const isCCTV = name.toLowerCase().includes("cctv");
+  const isETLE = name.toLowerCase().includes("etle");
+  
+  // Coba parse kecepatan dari nama site terlebih dahulu
+  const parsedSpeed = parseSpeed(name);
 
   let axisMaxLoad: number;
   let inMax: number, inMin: number, outMax: number, outMin: number;
 
-  if (isBackbone) {
+  if (parsedSpeed) {
+    // Gunakan kecepatan dari nama site
+    if (parsedSpeed.unit === "gbps") {
+      axisMaxLoad = parsedSpeed.value * 1_000_000_000;
+    } else {
+      axisMaxLoad = parsedSpeed.value * 1_000_000;
+    }
+    // Set traffic bounds berdasarkan axisMax
+    inMax = axisMaxLoad * 0.4;
+    inMin = axisMaxLoad * 0.1;
+    outMax = axisMaxLoad * 0.2;
+    outMin = axisMaxLoad * 0.05;
+  } else if (isBackbone) {
     // Internet Backbone: 1.0 G (Label: 0, 200 M, 400 M, 600 M, 800 M, 1000 M)
     axisMaxLoad = 1_000_000_000;
     inMax = 400_000_000; // Turun ke 400M (40% dari max) - agar tidak penuh
     inMin = 100_000_000; // Turun ke 100M
     outMax = 150_000_000;
     outMin = 40_000_000;
+  } else if (isETLE) {
+    // VPN / Metro ETLE: 250 Mbps
+    axisMaxLoad = 250_000_000;
+    inMax = 100_000_000;
+    inMin = 25_000_000;
+    outMax = 50_000_000;
+    outMin = 10_000_000;
   } else if (isIntegration) {
     // Integration Network: 40 M (Label: 0, 8 M, 16 M, 24 M, 32 M, 40 M)
     axisMaxLoad = 40_000_000;
@@ -97,14 +136,38 @@ export function createDefaultSites(
     (s) => s.id === existingLatencyId,
   );
 
-  const loadSite: Site = {
-    id: existingLoadId,
-    name: `${name} (Load)`,
-    type: "traffic",
-    unit: "bps",
-    axisMax: axisMaxLoad,
-    // 6 Interface dengan pola asimetris khas NOC/MRTG
-    interfaces: [0, 1, 2, 3, 4, 5].map((i) => {
+  // Generate interfaces based on region
+  const interfaces: SiteInterface[] = [];
+  
+  if (region === "banten") {
+    // Banten: 2 interface Load graph (1 arah, hanya IN)
+    interfaces.push(
+      {
+        id: existingLoad?.interfaces[0]?.id || `iface-${index}-0`,
+        name: "eth0",
+        colorIn: BANTEN_COLORS[0].in,
+        colorOut: BANTEN_COLORS[0].out,
+        dataIn: mergeData(
+          existingLoad?.interfaces[0]?.dataIn || [],
+          generateSmoothData(startTs, now, axisMaxLoad * 0.1, axisMaxLoad * 0.4, index * 100, interval),
+        ),
+        dataOut: [],
+      },
+      {
+        id: existingLoad?.interfaces[1]?.id || `iface-${index}-1`,
+        name: "eth1",
+        colorIn: BANTEN_COLORS[1].in,
+        colorOut: BANTEN_COLORS[1].out,
+        dataIn: mergeData(
+          existingLoad?.interfaces[1]?.dataIn || [],
+          generateSmoothData(startTs, now, axisMaxLoad * 0.08, axisMaxLoad * 0.35, index * 100 + 25, interval),
+        ),
+        dataOut: [],
+      },
+    );
+  } else {
+    // Bali/default: 6 interface dengan pola asimetris khas NOC/MRTG
+    for (let i = 0; i < 6; i++) {
       let ifaceName = `ether${i + 1}`;
       if (i === 5) ifaceName = "LAN";
 
@@ -157,7 +220,7 @@ export function createDefaultSites(
       const inSeed = index * 7919 + i * 1337; // Prime numbers untuk distribusi unik
       const outSeed = index * 7919 + i * 1337 + 997; // Offset prime untuk OUT yang berbeda
 
-      return {
+      interfaces.push({
         id: existingLoad?.interfaces[i]?.id || `iface-${index}-${i}`,
         name: ifaceName,
         colorIn: INTERFACE_COLORS[i].in,
@@ -182,13 +245,24 @@ export function createDefaultSites(
           interval,
           isCCTV,
         ),
-      };
-    }),
+      });
+    }
+  }
+
+  const loadSite: Site = {
+    id: existingLoadId,
+    name: `${name}`,
+    type: "traffic",
+    unit: "bps",
+    axisMax: axisMaxLoad,
+    region,
+    graphType: region === "banten" ? "load" : "traffic",
+    interfaces,
   };
 
   const latencySite: Site = {
     id: existingLatencyId,
-    name: `${name} (Latency)`,
+    name: `${name}`,
     type: "ping",
     unit: "ms",
     axisMax: 100,

@@ -6,6 +6,7 @@ import { SiteEditor } from "../components/editor/SiteEditor";
 import { Settings } from "../components/common/Settings";
 import { clearSession } from "../utils/auth";
 import type { Site, TimeRange } from "../types";
+import { DEFAULT_SITE_NAMES, BANTEN_SITE_NAMES } from "../constants/defaults";
 
 // Import untuk fungsi Auto Report
 import { toPng } from "html-to-image";
@@ -39,7 +40,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [graphFilter, setGraphFilter] = useState<
     "all" | "traffic" | "load" | "ping"
   >("all");
-  const [regionFilter, setRegionFilter] = useState<"all" | "bali" | "banten">("all");
+  const [regionFilter, setRegionFilter] = useState<"all" | "bali" | "banten">(
+    "all",
+  );
   const [showAllSites, setShowAllSites] = useState(false);
   const [detailChart, setDetailChart] = useState<Site | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -262,9 +265,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
         site.name.toLowerCase().includes(searchQuery.toLowerCase()),
       );
     if (graphFilter === "traffic")
-      result = result.filter((site) => site.type === "traffic");
+      result = result.filter((site) => site.graphType === "traffic");
     else if (graphFilter === "load")
-      result = result.filter((site) => site.type === "latency");
+      result = result.filter((site) => site.graphType === "load");
     else if (graphFilter === "ping")
       result = result.filter((site) => site.type === "ping");
     return result;
@@ -276,17 +279,44 @@ export function Dashboard({ onLogout }: DashboardProps) {
         let result = showAllSites ? filteredSites : filteredSites.slice(0, 12);
         // Filter by region
         if (regionFilter === "bali") {
-          result = result.filter((s) =>
-            s.name.toLowerCase().includes("bali") ||
-            s.name.toLowerCase().includes("denpasar") ||
-            s.name.toLowerCase().includes("gianyar") ||
-            s.name.toLowerCase().includes("tabanan") ||
-            s.name.toLowerCase().includes("badung")
-          );
+          // Filter untuk site Bali (default site + site dengan keyword Bali)
+          result = result.filter((s) => {
+            const nameLower = s.name.toLowerCase();
+            // Cek apakah site ada di DEFAULT_SITE_NAMES atau mengandung keyword Bali
+            const isDefaultBali = DEFAULT_SITE_NAMES.some(
+              (bali) => nameLower.includes(bali.toLowerCase())
+            );
+            // Pastikan bukan site Banten (prioritaskan Banten)
+            const isBanten = BANTEN_SITE_NAMES.some(
+              (banten) => nameLower.includes(banten.toLowerCase())
+            ) || nameLower.includes("banten");
+            if (isBanten) return false;
+            
+            const hasBaliKeyword =
+              nameLower.includes("bali") ||
+              nameLower.includes("denpasar") ||
+              nameLower.includes("gianyar") ||
+              nameLower.includes("tabanan") ||
+              nameLower.includes("badung");
+            return isDefaultBali || hasBaliKeyword;
+          });
         } else if (regionFilter === "banten") {
-          result = result.filter((s) =>
-            s.name.toLowerCase().includes("banten")
-          );
+          // Filter untuk site Banten (default site + site dengan keyword Banten)
+          result = result.filter((s) => {
+            const nameLower = s.name.toLowerCase();
+            // Cek apakah site ada di BANTEN_SITE_NAMES atau mengandung keyword Banten
+            const isDefaultBanten = BANTEN_SITE_NAMES.some(
+              (banten) => nameLower.includes(banten.toLowerCase())
+            );
+            const hasBantenKeyword =
+              nameLower.includes("banten") ||
+              nameLower.includes("serang") ||
+              nameLower.includes("cilegon") ||
+              nameLower.includes("pandeglang") ||
+              nameLower.includes("lebak") ||
+              nameLower.includes("tangerang");
+            return isDefaultBanten || hasBantenKeyword;
+          });
         }
         return result;
       })();
@@ -536,7 +566,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
             style={{
               background: regionFilter === region ? "#0a2a1a" : "none",
               border:
-                regionFilter === region ? "1px solid #33cc00" : "1px solid #333",
+                regionFilter === region
+                  ? "1px solid #33cc00"
+                  : "1px solid #333",
               borderRadius: "3px",
               color: regionFilter === region ? "#33cc00" : "#888",
               fontFamily: "JetBrains Mono, monospace",

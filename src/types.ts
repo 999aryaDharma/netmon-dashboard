@@ -1,31 +1,33 @@
 export type SiteType = "traffic" | "latency" | "ping";
+export type SiteRegion = "bali" | "banten";
+export type GraphType = "traffic" | "load"; // traffic = bidirectional, load = unidirectional
 
 export interface DataPoint {
   timestamp: number;
   value: number;
-  lossRate?: number; // Packet loss percentage (0-100) for ping type
+  lossRate?: number;
 }
 
-// One interface inside a site (e.g. ether1, ether2, LAN)
 export interface SiteInterface {
   id: string;
-  name: string; // 'ether1', 'ether2', 'LAN', etc.
-  colorIn: string; // color for IN traffic
-  colorOut: string; // color for OUT traffic
+  name: string;
+  colorIn: string;
+  colorOut: string;
   dataIn: DataPoint[];
   dataOut: DataPoint[];
-  dataRtt?: DataPoint[]; // RTT data for ping type
-  dataLoss?: DataPoint[]; // Packet loss data for ping type
+  dataRtt?: DataPoint[];
+  dataLoss?: DataPoint[];
 }
 
-// One site = one router/device with multiple interfaces stacked in one chart
 export interface Site {
   id: string;
-  name: string; // e.g. "Mikrotik-Core-01"
+  name: string;
   type: SiteType;
-  unit: string; // 'Mbps' | 'bps' | 'ms' | '%'
-  axisMax: number; // total positive Y max (for ALL stacked interfaces)
+  unit: string;
+  axisMax: number;
   interfaces: SiteInterface[];
+  region?: SiteRegion; // "bali" | "banten" — opsional agar backward-compatible
+  graphType?: GraphType; // "traffic" (bidirectional) atau "load" (unidirectional)
 }
 
 export interface TimeRange {
@@ -33,4 +35,3 @@ export interface TimeRange {
   end: number;
   label: string;
 }
-  

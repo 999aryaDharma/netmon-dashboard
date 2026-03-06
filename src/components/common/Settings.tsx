@@ -6,7 +6,6 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const {
     clearAllData,
     regenerateAllData,
-    regenerateAllDataFullYear,
     exportData,
     importData,
   } = useApp();
@@ -54,7 +53,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
         "Regenerate ALL data for FULL YEAR (1 Jan - 31 Dec)? This will replace existing data.",
       )
     ) {
-      const success = await regenerateAllDataFullYear();
+      const success = await regenerateAllData();
       alert(
         success
           ? "Full year data generated successfully!"
