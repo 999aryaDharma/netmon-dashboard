@@ -10,7 +10,7 @@ import { DEFAULT_SITE_NAMES, BANTEN_SITE_NAMES } from "../constants/defaults";
 
 // Import untuk fungsi Auto Report
 import { toPng } from "html-to-image";
-import { generateWeeklyReportDocx, generateBantenReportDocx } from "../utils/reportGenerator";
+import { useReportWorker } from "../hooks/useReportWorker";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -56,7 +56,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
 
-  const [reportRegion, setReportRegion] = useState<"all" | "bali" | "banten">("all");
+  const [reportRegion, setReportRegion] = useState<"all" | "bali" | "banten">(
+    "all",
+  );
   const [reportWeekTarget, setReportWeekTarget] = useState<
     "1" | "2" | "3" | "4" | "ALL"
   >("1");
@@ -72,6 +74,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [hiddenTimeRange, setHiddenTimeRange] = useState<TimeRange | null>(
     null,
   );
+
+  // Hook untuk Web Worker - Report generation di background thread
+  const { generateReportAsync } = useReportWorker();
 
   // Fungsi pengubah nama site menjadi nama TAG Word (Super Cerdas)
   const getTagFromName = (name: string) => {
@@ -91,11 +96,21 @@ export function Dashboard({ onLogout }: DashboardProps) {
   // Fungsi Utama Eksekutor Report
   const startGenerateReport = async () => {
     setIsGenerating(true);
-    
+
     // Helper: Nama bulan untuk label
     const bulan = [
-      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-      "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+      "Januari",
+      "Februari",
+      "Maret",
+      "April",
+      "Mei",
+      "Juni",
+      "Juli",
+      "Agustus",
+      "September",
+      "Oktober",
+      "November",
+      "Desember",
     ];
     const [yearStr, monthStr] = reportMonth.split("-");
     const monthIndex = parseInt(monthStr) - 1;
@@ -142,18 +157,21 @@ export function Dashboard({ onLogout }: DashboardProps) {
     let targetWeeks: typeof weeks = [];
     if (reportRegion === "banten") {
       // Banten: Hanya 1 file untuk 1 bulan full
-      targetWeeks = [{
-        id: "FULL",
-        start: monthStart,
-        end: monthEnd,
-      }];
+      targetWeeks = [
+        {
+          id: "FULL",
+          start: monthStart,
+          end: monthEnd,
+        },
+      ];
     } else {
       // Bali: Per minggu sesuai pilihan
-      targetWeeks = reportWeekTarget === "ALL"
-        ? weeks
-        : weeks.filter((w) => w.id === reportWeekTarget);
+      targetWeeks =
+        reportWeekTarget === "ALL"
+          ? weeks
+          : weeks.filter((w) => w.id === reportWeekTarget);
     }
-    
+
     setGenTotal(trafficSites.length * targetWeeks.length);
     let overallProgress = 0;
 
@@ -164,13 +182,12 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
       for (let i = 0; i < trafficSites.length; i++) {
         const site = trafficSites[i];
-        const periodLabel = reportRegion === "banten"
-          ? `${namaBulan} ${yearStr} (Full Month)`
-          : `M${currentWeek.id}`;
-        
-        setGenStatus(
-          `${periodLabel}: ${site.name}`,
-        );
+        const periodLabel =
+          reportRegion === "banten"
+            ? `${namaBulan} ${yearStr} (Full Month)`
+            : `M${currentWeek.id}`;
+
+        setGenStatus(`${periodLabel}: ${site.name}`);
 
         // Untuk Banten: Capture screenshot langsung (800x300px)
         if (reportRegion === "banten") {
@@ -241,32 +258,46 @@ export function Dashboard({ onLogout }: DashboardProps) {
       // Generate file Word untuk minggu/bulan ini
       if (reportRegion === "banten") {
         // Banten: Generate manual tanpa template
-        console.log("Generating Banten report with", Object.keys(imageMap).length, "screenshots");
-        setGenStatus(`Menyusun File Word Banten ${namaBulan}...`);
-        
-        const success = await generateBantenReportDocx(
-          monthStart,
-          monthEnd,
-          imageMap,
+        console.log(
+          "Generating Banten report with",
+          Object.keys(imageMap).length,
+          "screenshots",
         );
-        
-        if (success) {
-          console.log("Banten report generated successfully!");
-        } else {
-          console.error("Failed to generate Banten report");
-        }
+        setGenStatus(`Menyusun File Word Banten ${namaBulan}...`);
+
+        // Kirim ke worker tanpa await
+        generateReportAsync("banten", {
+          startDate: monthStart,
+          endDate: monthEnd,
+          imageMap,
+          stringPeriode: `${namaBulan} ${year}`,
+        }).catch((error) => {
+          console.error("Failed to generate Banten report:", error);
+        });
       } else {
         // Bali: Generate dengan template
         const periodType = "Minggu";
         setGenStatus(`Menyusun File Word ${periodType} ${currentWeek.id}...`);
         await new Promise((resolve) => setTimeout(resolve, 300));
 
+        // Format periode string
+        let stringPeriode = "";
+        if (currentWeek.start.getMonth() === currentWeek.end.getMonth()) {
+          stringPeriode = `${currentWeek.start.getDate()} - ${currentWeek.end.getDate()} ${bulan[currentWeek.end.getMonth()]} ${currentWeek.end.getFullYear()}`;
+        } else {
+          stringPeriode = `${currentWeek.start.getDate()} ${bulan[currentWeek.start.getMonth()]} - ${currentWeek.end.getDate()} ${bulan[currentWeek.end.getMonth()]} ${currentWeek.end.getFullYear()}`;
+        }
+
         // Generate file Word untuk periode ini
-        await generateWeeklyReportDocx(
-          currentWeek.start,
-          currentWeek.end,
+        generateReportAsync("weekly", {
+          startDate: currentWeek.start,
+          endDate: currentWeek.end,
           imageMap,
-        );
+          stringPeriode,
+          namaBulan: bulan[currentWeek.end.getMonth()],
+        }).catch((error) => {
+          console.error("Failed to generate weekly report:", error);
+        });
 
         // Jika ini "Generate ALL" (Bali), beri jeda 2 detik sebelum mendownload file berikutnya
         if (reportWeekTarget === "ALL" && w < targetWeeks.length - 1) {
@@ -838,7 +869,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
               >
                 <option value="all">📦 Semua Region (Bali + Banten)</option>
                 <option value="bali">🌴 Bali Only (MRTG Template)</option>
-                <option value="banten">🏭 Banten Only (Zabbix Screenshot)</option>
+                <option value="banten">
+                  🏭 Banten Only (Zabbix Screenshot)
+                </option>
               </select>
             </div>
 
@@ -888,7 +921,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
                     </label>
                     <select
                       value={reportWeekTarget}
-                      onChange={(e) => setReportWeekTarget(e.target.value as any)}
+                      onChange={(e) =>
+                        setReportWeekTarget(e.target.value as any)
+                      }
                       disabled={isGenerating}
                       style={{
                         width: "100%",
@@ -935,9 +970,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
                         lineHeight: "1.4",
                       }}
                     >
-                      • Semua Site = 1 File DOCX<br/>
-                      • Periode: 1 Bulan Full (Tgl 1 - Akhir)<br/>
-                      • Chart: 800x300px (Zabbix Style)
+                      • Semua Site = 1 File DOCX
+                      <br />
+                      • Periode: 1 Bulan Full (Tgl 1 - Akhir)
+                      <br />• Chart: 800x300px (Zabbix Style)
                     </div>
                   </div>
                 )}
@@ -1031,7 +1067,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
           ref={hiddenChartRef}
           style={{
             width: "800px",
-            background: "#2b2b2b",  // Unified gray - sama dengan THEME.chartBg
+            background: "#2b2b2b", // Unified gray - sama dengan THEME.chartBg
             border: "none",
             overflow: "hidden",
             display: "flex",
@@ -1054,7 +1090,10 @@ export function Dashboard({ onLogout }: DashboardProps) {
                 color: "#FFFFFF",
                 margin: 0,
                 fontWeight: 600,
-                fontFamily: hiddenSite?.region === "banten" ? "Open Sans, sans-serif" : "JetBrains Mono, monospace",
+                fontFamily:
+                  hiddenSite?.region === "banten"
+                    ? "Open Sans, sans-serif"
+                    : "JetBrains Mono, monospace",
                 letterSpacing: "0px",
                 whiteSpace: "nowrap",
                 overflow: "visible",
@@ -1065,17 +1104,18 @@ export function Dashboard({ onLogout }: DashboardProps) {
               {hiddenSite?.name || "Site Name"}
             </h2>
           </div>
-          
+
           {/* Chart Area */}
           <div
-            style={{ 
-              cursor: "pointer", 
+            style={{
+              cursor: "pointer",
               paddingBottom: "4px",
               height: "250px",
             }}
           >
-            {hiddenSite && hiddenTimeRange && (
-              hiddenSite.type === "ping" ? (
+            {hiddenSite &&
+              hiddenTimeRange &&
+              (hiddenSite.type === "ping" ? (
                 <PingChart
                   site={hiddenSite}
                   startTs={hiddenTimeRange.start}
@@ -1091,8 +1131,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
                   width={760}
                   height={240}
                 />
-              )
-            )}
+              ))}
           </div>
         </div>
       </div>
@@ -1701,11 +1740,11 @@ function GridSiteCard({
   onEdit: () => void;
 }) {
   // Background unified - semua region pakai warna yang sama
-  const bgColor = "#2b2b2b";  // Unified gray
-  
+  const bgColor = "#2b2b2b"; // Unified gray
+
   const fontFamilies = {
-    bali: "JetBrains Mono, monospace",  // MRTG style
-    banten: "Open Sans, sans-serif",    // Zabbix style
+    bali: "JetBrains Mono, monospace", // MRTG style
+    banten: "Open Sans, sans-serif", // Zabbix style
   };
   const font = fontFamilies[site.region || "bali"];
 
