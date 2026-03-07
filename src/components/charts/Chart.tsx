@@ -2,8 +2,9 @@ import React, { useMemo } from "react";
 import { Site } from "../../types";
 
 const THEME = {
-  chartBg: "#323841",
-  gridLine: "rgba(255, 255, 255, 0.15)",
+  chartBg: "#2b2b2b",       // Unified gray background (MRTG & Zabbix)
+  chartBgBanten: "#2b2b2b", // Same color for consistency
+  gridLine: "rgba(255, 255, 255, 0.1)",
   text: "#c8ced6",
   axisTitle: "#edf1f4",
 };
@@ -21,9 +22,16 @@ function formatRRDLabel(v: number, unit: string = "bps"): string {
 
   let val = abs;
   let prefix = "";
-  if (abs >= 1_000_000_000) { val = abs / 1_000_000_000; prefix = "G"; }
-  else if (abs >= 1_000_000) { val = abs / 1_000_000; prefix = "M"; }
-  else if (abs >= 1_000) { val = abs / 1_000; prefix = "k"; }
+  if (abs >= 1_000_000_000) {
+    val = abs / 1_000_000_000;
+    prefix = "G";
+  } else if (abs >= 1_000_000) {
+    val = abs / 1_000_000;
+    prefix = "M";
+  } else if (abs >= 1_000) {
+    val = abs / 1_000;
+    prefix = "k";
+  }
 
   // RRDTool Style: 1 desimal jika bukan bulat (2.5), tanpa desimal jika bulat (5)
   const formatted = val % 1 === 0 ? val.toString() : val.toFixed(1);
@@ -135,40 +143,61 @@ export function Chart({
   const timeRange = endTs - startTs || 1;
   const getX = (ts: number) => PAD.left + ((ts - startTs) / timeRange) * chartW;
 
-  // Ukuran kotak grid yang diinginkan (dalam pixel) - agar persegi sempurna
-  const gridPixelSize = 25;
+  // Grid configuration - berbeda per region
+  // Bali (MRTG): persegi 25x25px, Banten (Zabbix): persegi panjang 60x25px
+  const isBanten = site.region === "banten";
+  const gridWidth = isBanten ? 60 : 25; // Banten: lebih lebar (persegi panjang)
+  const gridHeight = isBanten ? 25 : 25; // Bali: persegi sempurna
 
   // Logika Interval Sumbu Y yang "Cantik" (RRDTool Style) - FIXED STEPS
   const { finalAxisMax, yTicks, getY, zeroY } = useMemo(() => {
     // PAKSA step tetap berdasarkan axisMax untuk konsistensi
     let step: number;
     let finalMax: number;
-    
+
     // Tentukan step berdasarkan axisMax (harus match dengan siteHelpers.ts)
     if (site.axisMax === 1_000_000_000) {
       // Backbone: Step 200 M
       step = 200_000_000;
       finalMax = 1_000_000_000;
+    } else if (site.axisMax === 250_000_000) {
+      // ETLE: Step 50 M
+      step = 50_000_000;
+      finalMax = 250_000_000;
+    } else if (site.axisMax === 100_000_000) {
+      // Default/Command Center: Step 20 M
+      step = 20_000_000;
+      finalMax = 100_000_000;
     } else if (site.axisMax === 40_000_000) {
       // Integration: Step 8 M
       step = 8_000_000;
       finalMax = 40_000_000;
+    } else if (site.axisMax === 35_000_000) {
+      // Integration Bali: Step 7 M
+      step = 7_000_000;
+      finalMax = 35_000_000;
     } else if (site.axisMax === 6_000_000) {
       // CCTV: Step 1.2 M
       step = 1_200_000;
       finalMax = 6_000_000;
-    } else if (site.axisMax === 100_000_000) {
-      // Default: Step 20 M
-      step = 20_000_000;
-      finalMax = 100_000_000;
+    } else if (site.axisMax === 5_000_000) {
+      // OBVIT/Small sites: Step 1 M
+      step = 1_000_000;
+      finalMax = 5_000_000;
     } else {
-      // Fallback: Gunakan algoritma nice step
+      // Fallback: Gunakan algoritma nice step untuk nilai custom
       const peak = maxStack * 1.05;
       const targetMax = Math.max(site.axisMax || 0, peak);
       const mag = Math.pow(10, Math.floor(Math.log10(targetMax || 1)));
       const possibleSteps = [
-        mag / 10, mag / 5, mag / 4, mag / 2,
-        mag, mag * 2, mag * 2.5, mag * 5
+        mag / 10,
+        mag / 5,
+        mag / 4,
+        mag / 2,
+        mag,
+        mag * 2,
+        mag * 2.5,
+        mag * 5,
       ];
       step = mag;
       for (const s of possibleSteps) {
@@ -202,11 +231,20 @@ export function Chart({
       ticks.push({ val: v, y: getYFunc(v), label: formatRRDLabel(v, unit) });
       if (isBidirectional && v !== 0) {
         // Untuk sumbu negatif (Out) - hanya untuk traffic bidirectional
-        ticks.push({ val: -v, y: getYFunc(-v), label: formatRRDLabel(-v, unit) });
+        ticks.push({
+          val: -v,
+          y: getYFunc(-v),
+          label: formatRRDLabel(-v, unit),
+        });
       }
     }
 
-    return { finalAxisMax: finalMax, yTicks: ticks, getY: getYFunc, zeroY: zeroYVal };
+    return {
+      finalAxisMax: finalMax,
+      yTicks: ticks,
+      getY: getYFunc,
+      zeroY: zeroYVal,
+    };
   }, [site.axisMax, maxStack, site.type, chartH]);
 
   // 2. GENERATOR AREA untuk stacked chart
@@ -249,7 +287,7 @@ export function Chart({
     const yyyy = date.getFullYear();
     const m = date.getMonth() + 1; // 'm' tanpa 0 di depan (1-12)
     const dd = date.getDate().toString().padStart(2, "0"); // 'dd' dengan 0 di depan (01-31)
-    
+
     // Format jam hh:mm
     const hh = date.getHours().toString().padStart(2, "0");
     const min = date.getMinutes().toString().padStart(2, "0");
@@ -260,52 +298,76 @@ export function Chart({
       // Jika rentang <= 24 Jam: Tampilkan jam (09:00), di titik terakhir tampilkan tanggal (2026-3-05)
       if (isLast) return formattedDate;
       return `${hh}:${min}`;
-
-    } else if (rangeHours <= 168) { // 168 jam = 7 Hari
+    } else if (rangeHours <= 168) {
+      // 168 jam = 7 Hari
       // Jika rentang 2 - 7 Hari: Tampilkan Tanggal & Jam (2026-3-05 09:00)
       return `${formattedDate} ${hh}:${min}`;
-
-    } else if (rangeHours <= 8760) { // 8760 jam = 1 Tahun
+    } else if (rangeHours <= 8760) {
+      // 8760 jam = 1 Tahun
       // Jika rentang > 7 Hari sampai 1 Tahun: Tampilkan Tanggal (2026-3-05)
       return formattedDate;
-
     } else {
       // Jika > 1 Tahun: Tampilkan Tanggal (2026-3-05)
       return formattedDate;
     }
   };
 
+  const currentBg = site.region === "banten" ? THEME.chartBgBanten : THEME.chartBg;
+
   return (
-    <svg width={width} height={height} style={{ background: "transparent" }}>
+    <svg 
+      width={width} 
+      height={height} 
+      style={{ background: currentBg }}
+    >
       <defs>
-        {/* PATTERN 1: Grid Dasar (Abu-abu tua - Solid & Tipis - Di bawah data) */}
-        <pattern 
-          id="baseGrid" 
-          width={gridPixelSize} 
-          height={gridPixelSize} 
-          patternUnits="userSpaceOnUse"
+        {/* Universal Arrow Marker - Triangle pointing RIGHT (closed with Z) */}
+        {/* orient="auto" will rotate it automatically for Y-axis */}
+        <marker
+          id="arrowHead"
+          markerWidth="4"
+          markerHeight="4"
+          refX="4"
+          refY="2"
+          orient="auto"
         >
           <path 
-            d={`M ${gridPixelSize} 0 L 0 0 0 ${gridPixelSize}`} 
+            d="M 0 0 L 4 2 L 0 4 Z" 
             fill="none" 
-            stroke="#555555" 
+            stroke="rgba(255,255,255,0.4)" 
+            strokeWidth="1"
+            shapeRendering="crispEdges"
+          />
+        </marker>
+
+        {/* PATTERN 1: Grid Dasar (Abu-abu tua - Solid & Tipis - Di bawah data) */}
+        <pattern
+          id="baseGrid"
+          width={gridWidth}
+          height={gridHeight}
+          patternUnits="userSpaceOnUse"
+        >
+          <path
+            d={`M ${gridWidth} 0 L 0 0 0 ${gridHeight}`}
+            fill="none"
+            stroke="#444444"
             strokeWidth="0.5"
           />
         </pattern>
 
-        {/* PATTERN 2: Grid Overlay (Abu-abu tua - Dashed/Putus-putus - Di atas data) */}
-        <pattern 
-          id="dashedGrid" 
-          width={gridPixelSize} 
-          height={gridPixelSize} 
+        {/* PATTERN 2: Grid Overlay (Putih - Dashed/Putus-putus - Di atas data) */}
+        <pattern
+          id="dashedGrid"
+          width={gridWidth}
+          height={gridHeight}
           patternUnits="userSpaceOnUse"
         >
-          <path 
-            d={`M ${gridPixelSize} 0 L 0 0 0 ${gridPixelSize}`} 
-            fill="none" 
-            stroke="#444444" 
-            strokeWidth="1"
-            strokeDasharray="2,3" // Putus-putus: 2px on, 3px off
+          <path
+            d={`M ${gridWidth} 0 L 0 0 0 ${gridHeight}`}
+            fill="none"
+            stroke="rgba(255,255,255,0.2)"
+            strokeWidth="1.2"
+            strokeDasharray="3,3" // Putus-putus lebih tegas: 3px on, 3px off
           />
         </pattern>
       </defs>
@@ -316,7 +378,7 @@ export function Chart({
         y={PAD.top}
         width={chartW}
         height={chartH}
-        fill={THEME.chartBg}
+        fill={site.region === "banten" ? THEME.chartBgBanten : THEME.chartBg}
         stroke="none"
       />
 
@@ -372,7 +434,7 @@ export function Chart({
         width={chartW}
         height={chartH}
         fill="url(#dashedGrid)"
-        style={{ pointerEvents: 'none' }}
+        style={{ pointerEvents: "none" }}
       />
 
       {/* --- LAYER 5: Zero Line (Garis Tengah) --- */}
@@ -430,15 +492,39 @@ export function Chart({
         );
       })}
 
-      {/* --- LAYER 9: Border Luar Kotak Grafik --- */}
+      {/* --- LAYER 8: Axis Lines with Arrows --- */}
+      {/* Y-Axis Line (from bottom to top - arrow auto-rotates to point UP) */}
+      <line
+        x1={PAD.left}
+        y1={PAD.top + chartH}
+        x2={PAD.left}
+        y2={PAD.top - 15}
+        stroke="#999"
+        strokeWidth="1"
+        markerEnd="url(#arrowHead)"
+      />
+
+      {/* X-Axis Line (from left to right - arrow points RIGHT) */}
+      <line
+        x1={PAD.left}
+        y1={PAD.top + chartH}
+        x2={PAD.left + chartW + 15}
+        y2={PAD.top + chartH}
+        stroke="#999"
+        strokeWidth="1"
+        markerEnd="url(#arrowHead)"
+      />
+
+      {/* --- LAYER 9: Grid Border (Dashed lines on all sides) --- */}
       <rect
         x={PAD.left}
         y={PAD.top}
         width={chartW}
         height={chartH}
         fill="none"
-        stroke="#999"
-        strokeWidth="1"
+        stroke="rgba(255,255,255,0.2)"
+        strokeWidth="1.2"
+        strokeDasharray="3,3"
       />
     </svg>
   );

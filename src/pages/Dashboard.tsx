@@ -10,7 +10,7 @@ import { DEFAULT_SITE_NAMES, BANTEN_SITE_NAMES } from "../constants/defaults";
 
 // Import untuk fungsi Auto Report
 import { toPng } from "html-to-image";
-import { generateWeeklyReportDocx } from "../utils/reportGenerator";
+import { generateWeeklyReportDocx, generateBantenReportDocx } from "../utils/reportGenerator";
 
 interface DashboardProps {
   onLogout: () => void;
@@ -56,6 +56,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
   });
 
+  const [reportRegion, setReportRegion] = useState<"all" | "bali" | "banten">("all");
   const [reportWeekTarget, setReportWeekTarget] = useState<
     "1" | "2" | "3" | "4" | "ALL"
   >("1");
@@ -90,14 +91,25 @@ export function Dashboard({ onLogout }: DashboardProps) {
   // Fungsi Utama Eksekutor Report
   const startGenerateReport = async () => {
     setIsGenerating(true);
-    const trafficSites = state.sites.filter((s) => s.type === "traffic");
-
-    // 1. Urai Tahun dan Bulan dari input (contoh "2026-01" -> year 2026, month 0)
+    
+    // Helper: Nama bulan untuk label
+    const bulan = [
+      "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+      "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+    ];
     const [yearStr, monthStr] = reportMonth.split("-");
+    const monthIndex = parseInt(monthStr) - 1;
+    const namaBulan = bulan[monthIndex];
     const year = parseInt(yearStr);
-    const month = parseInt(monthStr) - 1; // JS Date index bulan dimulai dari 0
+    const month = monthIndex; // JS Date index bulan dimulai dari 0
 
-    // 2. Buat Definisi 4 Minggu
+    // Filter sites by region
+    let trafficSites = state.sites.filter((s) => s.type === "traffic");
+    if (reportRegion !== "all") {
+      trafficSites = trafficSites.filter((s) => s.region === reportRegion);
+    }
+
+    // 2. Buat Definisi 4 Minggu (untuk Bali)
     const weeks = [
       {
         id: "1",
@@ -122,11 +134,26 @@ export function Dashboard({ onLogout }: DashboardProps) {
       },
     ];
 
-    // 3. Tentukan antrean berdasarkan pilihan user
-    const targetWeeks =
-      reportWeekTarget === "ALL"
+    // Untuk Banten: 1 bulan full (awal bulan sampai akhir bulan)
+    const monthStart = new Date(year, month, 1, 0, 0, 0);
+    const monthEnd = new Date(year, month + 1, 0, 23, 59, 59);
+
+    // 3. Tentukan antrean berdasarkan pilihan user dan region
+    let targetWeeks: typeof weeks = [];
+    if (reportRegion === "banten") {
+      // Banten: Hanya 1 file untuk 1 bulan full
+      targetWeeks = [{
+        id: "FULL",
+        start: monthStart,
+        end: monthEnd,
+      }];
+    } else {
+      // Bali: Per minggu sesuai pilihan
+      targetWeeks = reportWeekTarget === "ALL"
         ? weeks
         : weeks.filter((w) => w.id === reportWeekTarget);
+    }
+    
     setGenTotal(trafficSites.length * targetWeeks.length);
     let overallProgress = 0;
 
@@ -137,11 +164,48 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
       for (let i = 0; i < trafficSites.length; i++) {
         const site = trafficSites[i];
+        const periodLabel = reportRegion === "banten"
+          ? `${namaBulan} ${yearStr} (Full Month)`
+          : `M${currentWeek.id}`;
+        
         setGenStatus(
-          `M${currentWeek.id}: ${site.name.replace(/\(Load\)/i, "")}`,
+          `${periodLabel}: ${site.name}`,
         );
 
-        // Posisikan grafik ke tanggal minggu ini
+        // Untuk Banten: Capture screenshot langsung (800x300px)
+        if (reportRegion === "banten") {
+          setHiddenSite(site);
+          setHiddenTimeRange({
+            start: monthStart.getTime(),
+            end: monthEnd.getTime(),
+            label: "Monthly Report",
+          });
+
+          // TUNGGU React render chart tersembunyi (2 frame animation)
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          if (hiddenChartRef.current) {
+            try {
+              // Capture dengan ukuran 800x300px untuk Banten (sama seperti dashboard)
+              const dataUrl = await toPng(hiddenChartRef.current, {
+                style: { margin: "0" },
+                skipFonts: true,
+                fontEmbedCSS: "",
+              });
+              const tag = getTagFromName(site.name);
+              imageMap[tag] = dataUrl;
+            } catch (err) {
+              console.error("Gagal memotret grafik:", site.name, err);
+            }
+          }
+          overallProgress++;
+          setGenProgress(overallProgress);
+          continue; // Lanjut ke site berikutnya, Word generation di bawah
+        }
+
+        // Untuk Bali: Gunakan template Word seperti biasa
         setHiddenSite(site);
         setHiddenTimeRange({
           start: currentWeek.start.getTime(),
@@ -159,7 +223,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
         if (hiddenChartRef.current) {
           try {
             const dataUrl = await toPng(hiddenChartRef.current, {
-              backgroundColor: "#2b3036",
+              backgroundColor: "#202020",
               style: { margin: "0" },
               skipFonts: true,
               fontEmbedCSS: "",
@@ -174,23 +238,43 @@ export function Dashboard({ onLogout }: DashboardProps) {
         setGenProgress(overallProgress);
       }
 
-      setGenStatus(`Menyusun File Word Minggu ${currentWeek.id}...`);
-      await new Promise((resolve) => setTimeout(resolve, 300)); // Jeda animasi
-
-      // Generate file Word untuk minggu ini
-      await generateWeeklyReportDocx(
-        currentWeek.start,
-        currentWeek.end,
-        imageMap,
-      );
-
-      // Jika ini "Generate ALL", beri jeda 2 detik sebelum mendownload file berikutnya
-      // agar browser tidak memblokir "Multiple Downloads"
-      if (reportWeekTarget === "ALL" && w < targetWeeks.length - 1) {
-        setGenStatus(
-          `Selesai Minggu ${currentWeek.id}. Istirahat pendingin RAM...`,
+      // Generate file Word untuk minggu/bulan ini
+      if (reportRegion === "banten") {
+        // Banten: Generate manual tanpa template
+        console.log("Generating Banten report with", Object.keys(imageMap).length, "screenshots");
+        setGenStatus(`Menyusun File Word Banten ${namaBulan}...`);
+        
+        const success = await generateBantenReportDocx(
+          monthStart,
+          monthEnd,
+          imageMap,
         );
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        
+        if (success) {
+          console.log("Banten report generated successfully!");
+        } else {
+          console.error("Failed to generate Banten report");
+        }
+      } else {
+        // Bali: Generate dengan template
+        const periodType = "Minggu";
+        setGenStatus(`Menyusun File Word ${periodType} ${currentWeek.id}...`);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+
+        // Generate file Word untuk periode ini
+        await generateWeeklyReportDocx(
+          currentWeek.start,
+          currentWeek.end,
+          imageMap,
+        );
+
+        // Jika ini "Generate ALL" (Bali), beri jeda 2 detik sebelum mendownload file berikutnya
+        if (reportWeekTarget === "ALL" && w < targetWeeks.length - 1) {
+          setGenStatus(
+            `Selesai ${periodType} ${currentWeek.id}. Istirahat pendingin RAM...`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        }
       }
     }
 
@@ -283,15 +367,16 @@ export function Dashboard({ onLogout }: DashboardProps) {
           result = result.filter((s) => {
             const nameLower = s.name.toLowerCase();
             // Cek apakah site ada di DEFAULT_SITE_NAMES atau mengandung keyword Bali
-            const isDefaultBali = DEFAULT_SITE_NAMES.some(
-              (bali) => nameLower.includes(bali.toLowerCase())
+            const isDefaultBali = DEFAULT_SITE_NAMES.some((bali) =>
+              nameLower.includes(bali.toLowerCase()),
             );
             // Pastikan bukan site Banten (prioritaskan Banten)
-            const isBanten = BANTEN_SITE_NAMES.some(
-              (banten) => nameLower.includes(banten.toLowerCase())
-            ) || nameLower.includes("banten");
+            const isBanten =
+              BANTEN_SITE_NAMES.some((banten) =>
+                nameLower.includes(banten.toLowerCase()),
+              ) || nameLower.includes("banten");
             if (isBanten) return false;
-            
+
             const hasBaliKeyword =
               nameLower.includes("bali") ||
               nameLower.includes("denpasar") ||
@@ -305,8 +390,8 @@ export function Dashboard({ onLogout }: DashboardProps) {
           result = result.filter((s) => {
             const nameLower = s.name.toLowerCase();
             // Cek apakah site ada di BANTEN_SITE_NAMES atau mengandung keyword Banten
-            const isDefaultBanten = BANTEN_SITE_NAMES.some(
-              (banten) => nameLower.includes(banten.toLowerCase())
+            const isDefaultBanten = BANTEN_SITE_NAMES.some((banten) =>
+              nameLower.includes(banten.toLowerCase()),
             );
             const hasBantenKeyword =
               nameLower.includes("banten") ||
@@ -341,7 +426,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
         display: "flex",
         flexDirection: "column",
         height: "100vh",
-        background: "#2C3034",
+        background: "#202020", // Unified dark background (MRTG & Zabbix style)
         fontFamily: "JetBrains Mono, monospace",
         color: "#ccc",
         overflow: "hidden",
@@ -726,68 +811,138 @@ export function Dashboard({ onLogout }: DashboardProps) {
               📄 Auto Generate Laporan
             </h3>
 
-            <div style={{ display: "flex", gap: "16px", marginBottom: "20px" }}>
-              {/* Input 1: Pemilihan Bulan */}
-              <div style={{ flex: 1 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "11px",
-                    color: "#888",
-                    marginBottom: "8px",
-                  }}
-                >
-                  Pilih Bulan:
-                </label>
-                <input
-                  type="month"
-                  value={reportMonth}
-                  onChange={(e) => setReportMonth(e.target.value)}
-                  disabled={isGenerating}
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    background: "#0a0a0a",
-                    border: "1px solid #333",
-                    color: "#fff",
-                    borderRadius: "4px",
-                  }}
-                />
-              </div>
-
-              {/* Input 2: Pemilihan Target Minggu */}
-              <div style={{ flex: 1 }}>
-                <label
-                  style={{
-                    display: "block",
-                    fontSize: "11px",
-                    color: "#888",
-                    marginBottom: "8px",
-                  }}
-                >
-                  Pilih Rentang:
-                </label>
-                <select
-                  value={reportWeekTarget}
-                  onChange={(e) => setReportWeekTarget(e.target.value as any)}
-                  disabled={isGenerating}
-                  style={{
-                    width: "100%",
-                    padding: "8px",
-                    background: "#0a0a0a",
-                    border: "1px solid #333",
-                    color: "#fff",
-                    borderRadius: "4px",
-                  }}
-                >
-                  <option value="1">Minggu 1 (Tgl 1 - 7)</option>
-                  <option value="2">Minggu 2 (Tgl 8 - 14)</option>
-                  <option value="3">Minggu 3 (Tgl 15 - 21)</option>
-                  <option value="4">Minggu 4 (Tgl 22 - Akhir)</option>
-                  <option value="ALL">📦 1 Bulan Full (4 File)</option>
-                </select>
-              </div>
+            {/* Input 1: Pemilihan Region */}
+            <div style={{ marginBottom: "16px" }}>
+              <label
+                style={{
+                  display: "block",
+                  fontSize: "11px",
+                  color: "#888",
+                  marginBottom: "8px",
+                }}
+              >
+                Pilih Region:
+              </label>
+              <select
+                value={reportRegion}
+                onChange={(e) => setReportRegion(e.target.value as any)}
+                disabled={isGenerating}
+                style={{
+                  width: "100%",
+                  padding: "8px",
+                  background: "#0a0a0a",
+                  border: "1px solid #333",
+                  color: "#fff",
+                  borderRadius: "4px",
+                }}
+              >
+                <option value="all">📦 Semua Region (Bali + Banten)</option>
+                <option value="bali">🌴 Bali Only (MRTG Template)</option>
+                <option value="banten">🏭 Banten Only (Zabbix Screenshot)</option>
+              </select>
             </div>
+
+            {/* Conditional: Tampilkan opsi tambahan jika region dipilih */}
+            {reportRegion !== "all" && (
+              <>
+                {/* Input 2: Pemilihan Bulan */}
+                <div style={{ marginBottom: "16px" }}>
+                  <label
+                    style={{
+                      display: "block",
+                      fontSize: "11px",
+                      color: "#888",
+                      marginBottom: "8px",
+                    }}
+                  >
+                    Pilih Bulan:
+                  </label>
+                  <input
+                    type="month"
+                    value={reportMonth}
+                    onChange={(e) => setReportMonth(e.target.value)}
+                    disabled={isGenerating}
+                    style={{
+                      width: "100%",
+                      padding: "8px",
+                      background: "#0a0a0a",
+                      border: "1px solid #333",
+                      color: "#fff",
+                      borderRadius: "4px",
+                    }}
+                  />
+                </div>
+
+                {/* Input 3: Pemilihan Target Minggu (Hanya untuk Bali) */}
+                {reportRegion === "bali" && (
+                  <div style={{ marginBottom: "16px" }}>
+                    <label
+                      style={{
+                        display: "block",
+                        fontSize: "11px",
+                        color: "#888",
+                        marginBottom: "8px",
+                      }}
+                    >
+                      Pilih Rentang:
+                    </label>
+                    <select
+                      value={reportWeekTarget}
+                      onChange={(e) => setReportWeekTarget(e.target.value as any)}
+                      disabled={isGenerating}
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        background: "#0a0a0a",
+                        border: "1px solid #333",
+                        color: "#fff",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <option value="1">Minggu 1 (Tgl 1 - 7)</option>
+                      <option value="2">Minggu 2 (Tgl 8 - 14)</option>
+                      <option value="3">Minggu 3 (Tgl 15 - 21)</option>
+                      <option value="4">Minggu 4 (Tgl 22 - Akhir)</option>
+                      <option value="ALL">📦 1 Bulan Full (4 File)</option>
+                    </select>
+                  </div>
+                )}
+
+                {/* Info untuk Banten */}
+                {reportRegion === "banten" && (
+                  <div
+                    style={{
+                      padding: "10px",
+                      background: "#1a1a2e",
+                      border: "1px solid #33ccff",
+                      borderRadius: "4px",
+                      marginBottom: "16px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "11px",
+                        color: "#33ccff",
+                        marginBottom: "4px",
+                      }}
+                    >
+                      ℹ️ Mode Banten (Zabbix)
+                    </div>
+                    <div
+                      style={{
+                        fontSize: "10px",
+                        color: "#888",
+                        lineHeight: "1.4",
+                      }}
+                    >
+                      • Semua Site = 1 File DOCX<br/>
+                      • Periode: 1 Bulan Full (Tgl 1 - Akhir)<br/>
+                      • Chart: 800x300px (Zabbix Style)
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
 
             {isGenerating ? (
               <div style={{ textAlign: "center", padding: "10px 0" }}>
@@ -876,41 +1031,69 @@ export function Dashboard({ onLogout }: DashboardProps) {
           ref={hiddenChartRef}
           style={{
             width: "800px",
-            height: "300px",
-            padding: "15px",
-            background: "#2b3036",
+            background: "#2b2b2b",  // Unified gray - sama dengan THEME.chartBg
+            border: "none",
+            overflow: "hidden",
+            display: "flex",
+            flexDirection: "column",
+            position: "relative",
           }}
         >
-          {hiddenSite && hiddenTimeRange && (
-            <div
+          {/* Header Area - sama seperti dashboard */}
+          <div
+            style={{
+              padding: "12px 16px 4px 16px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <h2
               style={{
-                display: "flex",
-                flexDirection: "column",
-                height: "100%",
+                fontSize: "12px",
+                color: "#FFFFFF",
+                margin: 0,
+                fontWeight: 600,
+                fontFamily: hiddenSite?.region === "banten" ? "Open Sans, sans-serif" : "JetBrains Mono, monospace",
+                letterSpacing: "0px",
+                whiteSpace: "nowrap",
+                overflow: "visible",
+                textOverflow: "clip",
+                flex: 1,
               }}
             >
-              <h3
-                style={{
-                  color: "#e4e8ec",
-                  margin: "0 0 10px 0",
-                  fontSize: "14px",
-                  textAlign: "center",
-                  fontFamily: "Arial, sans-serif",
-                }}
-              >
-                {hiddenSite.name.replace(/\(Load\)/i, "").trim()}
-              </h3>
-              <div style={{ flex: 1 }}>
+              {hiddenSite?.name || "Site Name"}
+            </h2>
+          </div>
+          
+          {/* Chart Area */}
+          <div
+            style={{ 
+              cursor: "pointer", 
+              paddingBottom: "4px",
+              height: "250px",
+            }}
+          >
+            {hiddenSite && hiddenTimeRange && (
+              hiddenSite.type === "ping" ? (
+                <PingChart
+                  site={hiddenSite}
+                  startTs={hiddenTimeRange.start}
+                  endTs={hiddenTimeRange.end}
+                  width={760}
+                  height={240}
+                />
+              ) : (
                 <Chart
                   site={hiddenSite}
                   startTs={hiddenTimeRange.start}
                   endTs={hiddenTimeRange.end}
-                  width={770}
+                  width={760}
                   height={240}
                 />
-              </div>
-            </div>
-          )}
+              )
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -1042,7 +1225,7 @@ function DetailChartModal({
     >
       <div
         style={{
-          background: "#2C3034",
+          background: "#202020",
           border: "1px solid #444",
           borderRadius: "4px",
           width: "95%",
@@ -1517,10 +1700,19 @@ function GridSiteCard({
   onOpenDetail: () => void;
   onEdit: () => void;
 }) {
+  // Background unified - semua region pakai warna yang sama
+  const bgColor = "#2b2b2b";  // Unified gray
+  
+  const fontFamilies = {
+    bali: "JetBrains Mono, monospace",  // MRTG style
+    banten: "Open Sans, sans-serif",    // Zabbix style
+  };
+  const font = fontFamilies[site.region || "bali"];
+
   return (
     <div
       style={{
-        background: "#2C3034",
+        background: bgColor,
         border: "1px solid #444",
         borderRadius: "4px",
         overflow: "hidden",
@@ -1532,23 +1724,24 @@ function GridSiteCard({
       {/* Header Area */}
       <div
         style={{
-          padding: "32px 16px 0px 16px",
+          padding: "12px 16px 4px 16px",
           display: "flex",
           justifyContent: "space-between",
+          alignItems: "center",
         }}
       >
         <h2
           style={{
             fontSize: "12px",
             color: "#FFFFFF",
-            marginBottom: -10,
-            fontWeight: 500,
-            fontFamily: "Roboto, sans-serif",
+            margin: 0,
+            fontWeight: 600,
+            fontFamily: font,
             letterSpacing: "0px",
             whiteSpace: "nowrap",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            maxWidth: "90%",
+            overflow: "visible",
+            textOverflow: "clip",
+            flex: 1,
           }}
         >
           {site.name}

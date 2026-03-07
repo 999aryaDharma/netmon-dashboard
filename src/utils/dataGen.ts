@@ -13,7 +13,7 @@ export function generateSmoothData(
   min: number,
   max: number,
   seed: number = Math.random() * 10000,
-  interval: number = 5 * 60 * 1000, 
+  interval: number = 5 * 60 * 1000,
   isCCTV: boolean = false
 ): { timestamp: number; value: number }[] {
   const points: { timestamp: number; value: number }[] = [];
@@ -110,11 +110,7 @@ export function generateSmoothData(
     // --- 6. MAJOR SPIKE (Ekstrem, sering terjadi) ---
     let spike = 0;
     if (rand() < spikeChance) {
-      spike = rand() * spikeMag;
-      // Kadang spike bertahan beberapa interval
-      if (rand() < 0.3) {
-        spike = spike * (1 + rand() * 0.5);
-      }
+      spike = rand() * spikeMag * 0.3; // Kurangi spike agar tidak terlalu liar
     }
 
     // --- 7. SUDDEN DROPS ---
@@ -123,29 +119,18 @@ export function generateSmoothData(
     // --- 8. GABUNGKAN SEMUA FAKTOR (KOMPLEKS) ---
     // suddenDrop sekarang mengalikan seluruh komponen, bukan hanya currentWalk
     let rawValue = currentWalk * diurnalFactor * weekendMod * burstMultiplier;
-    
+
     // Apply suddenDrop ke seluruh rawValue (bukan cuma currentWalk)
     if (rand() < 0.04) { // 4% chance
       rawValue *= 0.1 + rand() * 0.2; // Drop 80-90% - lebih dramatis dan bersih
     }
-    
-    let finalValue = min + range * rawValue + jitter + microBurst + sharpSpike;
-    
-    // --- 9. MAJOR SPIKE (Ekstrem, sering terjadi) - RELATIF TERHADAP AXIS MAX ---
-    // Spike sekarang relatif terhadap (axisMax - max), bukan range min-max
-    // Ini bikin spike bisa "meledak" lebih tinggi tanpa kena clamp
-    if (rand() < spikeChance) {
-      const spike = rand() * spikeMag * (max - min); // Spike relatif terhadap range
-      finalValue += spike;
-      // Kadang spike bertahan beberapa interval
-      if (rand() < 0.3 && ts + interval <= endTs) {
-        // Spike berkelanjutan akan di-handle di iterasi berikutnya
-      }
-    }
 
-    // --- 10. CLAMPING ---
-    // Longgarkan clamp: beri ruang 1% di bawah dan 1% di atas untuk spike
-    finalValue = Math.max(min * 0.01, Math.min(max * 1.0, finalValue));
+    // Hitung final value dengan semua komponen
+    let finalValue = min + range * (rawValue + jitter + microBurst + sharpSpike + spike);
+
+    // --- 9. CLAMPING ---
+    // Clamp ke range min-max agar tidak melebihi axis
+    finalValue = Math.max(min * 0.01, Math.min(max * 0.98, finalValue));
 
     points.push({ 
       timestamp: ts, 
