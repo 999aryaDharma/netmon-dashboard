@@ -49,7 +49,9 @@ export function createDefaultSites(
   );
 
   // Helper: Parse kecepatan dari nama site (format: "Nama Site - Available XXX Mbps/Gbps")
-  const parseSpeed = (siteName: string): { value: number; unit: string } | null => {
+  const parseSpeed = (
+    siteName: string,
+  ): { value: number; unit: string } | null => {
     const match = siteName.match(/Available\s+([\d.]+)\s*(Gbps|Mbps)/i);
     if (match) {
       return { value: parseFloat(match[1]), unit: match[2].toLowerCase() };
@@ -67,7 +69,7 @@ export function createDefaultSites(
     name.toLowerCase().includes("toll");
   const isCCTV = name.toLowerCase().includes("cctv");
   const isETLE = name.toLowerCase().includes("etle");
-  
+
   // Coba parse kecepatan dari nama site terlebih dahulu
   const parsedSpeed = parseSpeed(name);
 
@@ -89,10 +91,10 @@ export function createDefaultSites(
   } else if (isBackbone) {
     // Internet Backbone: 1.0 G (Label: 0, 200 M, 400 M, 600 M, 800 M, 1000 M)
     axisMaxLoad = 1_000_000_000;
-    inMax = 400_000_000; // Turun ke 400M (40% dari max) - agar tidak penuh
-    inMin = 100_000_000; // Turun ke 100M
-    outMax = 150_000_000;
-    outMin = 40_000_000;
+    inMax = 950_000_000; // Naikkan ke 95% agar lebih dominan
+    inMin = 500_000_000; // Naikkan juga min ke 30%
+    outMax = 500_000_000;
+    outMin = 150_000_000;
   } else if (isETLE) {
     // VPN / Metro ETLE: 250 Mbps
     axisMaxLoad = 250_000_000;
@@ -138,7 +140,16 @@ export function createDefaultSites(
 
   const interfaces: SiteInterface[] = interfaceProfiles.map((profile, i) => {
     const inSeed = index * 7919 + i * 1337;
-    const outSeed = index * 7919 + i * 1337 + 997;
+
+    // Gunakan renderer.generateInterfaceData() untuk generate data yang sesuai region
+    const generatedData = renderer.generateInterfaceData(
+      profile,
+      startTs,
+      now,
+      inSeed,
+      interval,
+      axisMaxLoad,
+    );
 
     return {
       id: existingLoad?.interfaces[i]?.id || `iface-${index}-${i}`,
@@ -147,30 +158,12 @@ export function createDefaultSites(
       colorOut: colorPalette.interfaces[i]?.out || "#CA89CB",
       dataIn: mergeData(
         existingLoad?.interfaces[i]?.dataIn || [],
-        generateSmoothData(
-          startTs,
-          now,
-          profile.inMinRatio * axisMaxLoad,
-          profile.inMaxRatio * axisMaxLoad,
-          inSeed,
-          interval,
-          isCCTV,
-        ),
+        generatedData.dataIn,
       ),
-      dataOut: profile.outMinRatio !== undefined && profile.outMaxRatio !== undefined
-        ? mergeData(
-            existingLoad?.interfaces[i]?.dataOut || [],
-            generateSmoothData(
-              startTs,
-              now,
-              profile.outMinRatio * axisMaxLoad,
-              profile.outMaxRatio * axisMaxLoad,
-              outSeed,
-              interval,
-              isCCTV,
-            ),
-          )
-        : [],
+      dataOut: mergeData(
+        existingLoad?.interfaces[i]?.dataOut || [],
+        generatedData.dataOut,
+      ),
     };
   });
 

@@ -5,7 +5,7 @@ import {
   ColorPalette,
   InterfaceProfile,
 } from "./ChartRenderer";
-import { generateSmoothData } from "../utils/dataGen";
+import { generateBantenInterfaceData } from "../utils/dataGen";
 
 /**
  * Banten Renderer - Zabbix Style
@@ -47,19 +47,15 @@ export class BantenRenderer implements IChartRenderer {
   }
 
   getInterfaceProfiles(axisMax: number): InterfaceProfile[] {
-    // Zabbix-style: Load graph dengan 2 interface
-    // Hanya IN (unidirectional), tidak ada OUT
+    // Zabbix-style: Hanya 1 interface dengan 2 garis
+    // IN = Area fluktuatif (Download), OUT = Area stabil (CCTV Upload)
     return [
       {
-        name: "eth0",
-        inMinRatio: 0.1, // 10% dari axisMax
-        inMaxRatio: 0.4, // 40% dari axisMax
-        // outMinRatio & outMaxRatio undefined = no OUT data
-      },
-      {
-        name: "eth1",
-        inMinRatio: 0.08, // 8% dari axisMax
-        inMaxRatio: 0.35, // 35% dari axisMax
+        name: "Interface-1",
+        inMinRatio: 0.1, // 10% - Batas bawah trafik fluktuatif
+        inMaxRatio: 0.8, // 80% - Batas atas trafik fluktuatif (naik turun)
+        outMinRatio: 0.5, // 50% - Trafik stabil bawah (CCTV Upload)
+        outMaxRatio: 0.55, // 55% - Trafik stabil atas (CCTV Upload) - Jaraknya sangat sempit agar stabil
       },
     ];
   }
@@ -70,18 +66,20 @@ export class BantenRenderer implements IChartRenderer {
     endTs: number,
     seed: number,
     interval: number,
+    axisMax: number = 100_000_000,
   ): { dataIn: DataPoint[]; dataOut: DataPoint[] } {
-    const dataIn = generateSmoothData(
+    return generateBantenInterfaceData(
+      profile as {
+        inMinRatio: number;
+        inMaxRatio: number;
+        outMinRatio?: number;
+        outMaxRatio?: number;
+      },
       startTs,
       endTs,
-      profile.inMinRatio * 100,
-      profile.inMaxRatio * 100,
       seed,
       interval,
-      false,
+      axisMax,
     );
-
-    // Zabbix load graph: tidak ada data OUT
-    return { dataIn, dataOut: [] };
   }
 }

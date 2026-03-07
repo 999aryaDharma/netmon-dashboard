@@ -2,7 +2,7 @@ import React, { useMemo } from "react";
 import { Site } from "../../types";
 
 const THEME = {
-  chartBg: "#2b2b2b",       // Unified gray background (MRTG & Zabbix)
+  chartBg: "#2b2b2b", // Unified gray background (MRTG & Zabbix)
   chartBgBanten: "#2b2b2b", // Same color for consistency
   gridLine: "rgba(255, 255, 255, 0.1)",
   text: "#c8ced6",
@@ -312,14 +312,11 @@ export function Chart({
     }
   };
 
-  const currentBg = site.region === "banten" ? THEME.chartBgBanten : THEME.chartBg;
+  const currentBg =
+    site.region === "banten" ? THEME.chartBgBanten : THEME.chartBg;
 
   return (
-    <svg 
-      width={width} 
-      height={height} 
-      style={{ background: currentBg }}
-    >
+    <svg width={width} height={height} style={{ background: currentBg }}>
       <defs>
         {/* Universal Arrow Marker - Triangle pointing RIGHT (closed with Z) */}
         {/* orient="auto" will rotate it automatically for Y-axis */}
@@ -331,10 +328,10 @@ export function Chart({
           refY="2"
           orient="auto"
         >
-          <path 
-            d="M 0 0 L 4 2 L 0 4 Z" 
-            fill="none" 
-            stroke="rgba(255,255,255,0.4)" 
+          <path
+            d="M 0 0 L 4 2 L 0 4 Z"
+            fill="none"
+            stroke="rgba(255,255,255,0.4)"
             strokeWidth="1"
             shapeRendering="crispEdges"
           />
@@ -404,22 +401,33 @@ export function Chart({
             />
           );
         } else {
-          // Cek apakah ini Load graph (1 arah, hanya IN)
-          const isLoadGraph = iface.dataOut && iface.dataOut.length === 0;
+          // Tentukan apakah OUT dirender ke bawah (MRTG/Bali) atau area tumpuk (Zabbix/Banten)
+          const drawOutDownwards = isBidirectional; // isBidirectional = true untuk Bali
+          const hasOutData = iface.dataOut && iface.dataOut.length > 0;
+          const isBantenZabbix = !isBidirectional && hasOutData; // Banten: unidirectional + ada OUT data
+          const opacityValue = isBantenZabbix ? 0.4 : 1; // Opacity rendah untuk Banten (Zabbix style)
+
           return (
             <g key={iface.id}>
+              {/* Render Trafik IN (Selalu Area Filled) */}
               <path
                 d={makeArea(`${iface.id}_in_y0`, `${iface.id}_in_y1`)}
                 fill={iface.colorIn}
                 shapeRendering="crispEdges"
-                opacity={1}
+                opacity={opacityValue}
               />
-              {!isLoadGraph && (
+
+              {/* Render Trafik OUT (Untuk Banten: Area tumpuk di atas, Untuk Bali: Area dibalik ke bawah) */}
+              {hasOutData && (
                 <path
-                  d={makeArea(`${iface.id}_out_y0`, `${iface.id}_out_y1`, true)}
+                  d={makeArea(
+                    `${iface.id}_out_y0`,
+                    `${iface.id}_out_y1`,
+                    drawOutDownwards,
+                  )}
                   fill={iface.colorOut}
                   shapeRendering="crispEdges"
-                  opacity={1}
+                  opacity={opacityValue}
                 />
               )}
             </g>

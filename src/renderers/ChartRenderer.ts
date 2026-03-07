@@ -12,10 +12,10 @@ export interface InterfaceColor {
  * Axis configuration
  */
 export interface AxisConfig {
-  bidirectional: boolean;      // true = IN atas, OUT bawah (MRTG)
-  showZeroLine: boolean;        // Garis tengah zero
-  labelFormat: 'RRDTool' | 'Zabbix' | 'custom';
-  steps: number[];              // Step interval untuk y-axis
+  bidirectional: boolean; // true = IN atas, OUT bawah (MRTG)
+  showZeroLine: boolean; // Garis tengah zero
+  labelFormat: "RRDTool" | "Zabbix" | "custom";
+  steps: number[]; // Step interval untuk y-axis
 }
 
 /**
@@ -34,9 +34,9 @@ export interface ColorPalette {
  */
 export interface InterfaceProfile {
   name: string;
-  inMinRatio: number;    // 0.1 = 10% dari axisMax
-  inMaxRatio: number;    // 0.4 = 40% dari axisMax
-  outMinRatio?: number;  // undefined untuk load-only
+  inMinRatio: number; // 0.1 = 10% dari axisMax
+  inMaxRatio: number; // 0.4 = 40% dari axisMax
+  outMinRatio?: number; // undefined untuk load-only
   outMaxRatio?: number;
 }
 
@@ -44,19 +44,20 @@ export interface InterfaceProfile {
  * Base Chart Renderer Interface
  */
 export interface IChartRenderer {
-  readonly region: 'bali' | 'banten';
-  
+  readonly region: "bali" | "banten";
+
   // Get configurations
   getAxisConfig(): AxisConfig;
   getColorPalette(): ColorPalette;
   getInterfaceProfiles(axisMax: number): InterfaceProfile[];
-  
+
   // Data generation helpers
   generateInterfaceData(
     profile: InterfaceProfile,
     startTs: number,
     endTs: number,
     seed: number,
-    interval: number
+    interval: number,
+    axisMax?: number,
   ): { dataIn: DataPoint[]; dataOut: DataPoint[] };
 }
