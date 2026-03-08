@@ -296,40 +296,104 @@ function generateCalmFluctuatingData(
   const range = max - min;
   const rand = seededRandom(seed);
 
-  // Karakteristik smooth tapi acak
-  const volatility = 0.2 + rand() * 0.2; // 0.2-0.4 (rendah untuk smooth)
-  const jitterAmp = 0.1 + rand() * 0.15; // 0.1-0.25 (jitter halus)
-  const spikeChance = 0.05 + rand() * 0.05; // 5-10% (spike sesekali)
-  const spikeMag = 0.4 + rand() * 0.4; // 0.4-0.8x (spike moderat)
+  // Karakteristik sangat smooth dan kalem - minimal fluktuasi
+  const volatility = 0.05 + rand() * 0.08; // 0.05-0.13 (sangat rendah untuk sangat smooth)
+  const jitterAmp = 0.03 + rand() * 0.05; // 0.03-0.08 (jitter sangat halus)
+  const spikeChance = 0.02 + rand() * 0.03; // 2-5% (spike sangat jarang)
+  const spikeMag = 0.1 + rand() * 0.15; // 0.1-0.25x (spike sangat kecil)
   // Baseline ratio tinggi dengan variasi acak
   const baselineRatio = 0.8 + rand() * 0.15; // 80-95% baseline
 
   let currentWalk = baselineRatio;
 
   for (let ts = startTs; ts <= endTs; ts += interval) {
-    // --- 1. RANDOM WALK MURNI (tanpa momentum yang predictable) ---
-    // Setiap titik benar-benar acak, tidak ada trend yang bertahan
-    const walkChange = (rand() - 0.5) * volatility;
+    // --- 1. RANDOM WALK MURNI (perubahan sangat halus) ---
+    // Setiap titik berubah sangat sedikit, smooth tanpa bukit lembah yang liar
+    const walkChange = (rand() - 0.5) * volatility * 0.4;
     currentWalk += walkChange;
-    currentWalk = Math.max(0.1, Math.min(0.95, currentWalk));
+    currentWalk = Math.max(0.5, Math.min(0.98, currentWalk));
 
-    // --- 2. JITTER HALUS (untuk variasi kecil yang smooth) ---
-    const jitter = (rand() - 0.5) * jitterAmp;
+    // --- 2. JITTER SANGAT HALUS (hampir tidak terasa) ---
+    const jitter = (rand() - 0.5) * jitterAmp * 0.4;
 
-    // --- 3. SPIKE SESekali (tidak terlalu sering, tidak terlalu jarang) ---
+    // --- 3. SPIKE SANGAT JARANG dan KECIL ---
     let spike = 0;
     if (rand() < spikeChance) {
-      spike = (rand() - 0.5) * spikeMag; // Bisa naik atau turun
+      spike = (rand() - 0.5) * spikeMag * 0.3; // Sangat kecil
     }
 
     // --- 4. HITUNG FINAL VALUE (tanpa diurnal, tanpa weekend pattern) ---
-    let finalValue =
-      min + range * Math.max(0, Math.min(1, currentWalk + jitter + spike));
+    let finalValue = min + range * Math.max(0, Math.min(1, 
+      currentWalk + jitter + spike
+    ));
 
     // Clamping agar tetap dalam range aman
     const minBound = min + range * 0.02;
     const maxBound = min + range * 0.98;
     finalValue = Math.max(minBound, Math.min(maxBound, finalValue));
+
+    points.push({
+      timestamp: ts,
+      value: Math.floor(finalValue),
+    });
+  }
+
+  return points;
+}
+
+/**
+ * Generate data bergaya Zabbix (Plateau / Blocky)
+ * Karakteristik:
+ * - Naik, stabil di atas (bukit), turun, stabil di bawah (lembah).
+ * - Tidak ada paku/spike tajam yang langsung turun.
+ */
+function generateZabbixStyleData(
+  startTs: number,
+  endTs: number,
+  min: number,
+  max: number,
+  seed: number,
+  interval: number = 5 * 60 * 1000,
+): { timestamp: number; value: number }[] {
+  const points: { timestamp: number; value: number }[] = [];
+  const range = max - min;
+  const rand = seededRandom(seed);
+
+  let isHighTraffic = false;
+  let ticksRemaining = 0;
+  let currentTarget = min;
+
+  for (let ts = startTs; ts <= endTs; ts += interval) {
+    // Jika durasi stabil sudah habis, tentukan state berikutnya (naik atau turun)
+    if (ticksRemaining <= 0) {
+      // 30% kemungkinan naik (Bukit), 70% kemungkinan turun (Lembah)
+      isHighTraffic = rand() < 0.3;
+
+      if (isHighTraffic) {
+        // BUKIT (High Traffic)
+        // Stabil di atas selama 4 sampai 12 interval (jam)
+        ticksRemaining = Math.floor(4 + rand() * 9);
+        // Tinggi bukit: 40% sampai 85% dari range maksimum
+        currentTarget = min + range * (0.4 + rand() * 0.45);
+      } else {
+        // LEMBAH (Low Traffic)
+        // Stabil di bawah selama 6 sampai 24 interval (jam)
+        ticksRemaining = Math.floor(6 + rand() * 19);
+        // Dasar lembah: 5% sampai 15% dari range maksimum
+        currentTarget = min + range * (0.05 + rand() * 0.1);
+      }
+    }
+
+    ticksRemaining--;
+
+    // Noise/Jitter yang SANGAT HALUS (hanya 3% fluktuasi)
+    // Agar garis atasnya tidak lurus kaku seperti penggaris, tapi tetap rata
+    const jitter = (rand() - 0.5) * range * 0.03;
+
+    let finalValue = currentTarget + jitter;
+
+    // Pastikan tidak keluar batas
+    finalValue = Math.max(min, Math.min(max, finalValue));
 
     points.push({
       timestamp: ts,
@@ -363,7 +427,6 @@ export function generateBantenInterfaceData(
   dataOut: { timestamp: number; value: number }[];
 } {
   // Generate data IN (Area fluktuatif tapi SANGAT smooth dan kalem - Download traffic)
-  // Gunakan function khusus generateCalmFluctuatingData untuk volatility minimal
   const dataIn = generateCalmFluctuatingData(
     startTs,
     endTs,
@@ -373,22 +436,19 @@ export function generateBantenInterfaceData(
     interval,
   );
 
-  // Generate data OUT (CCTV Upload dengan range yang stabil dan rendah)
-  // Gunakan profile.outMinRatio dan outMaxRatio untuk consistency
+  // Generate data OUT menggunakan fungsi Zabbix Blocky yang baru
   let dataOut: { timestamp: number; value: number }[] = [];
   if (profile.outMinRatio !== undefined && profile.outMaxRatio !== undefined) {
-    // Gunakan ratio dari profile secara langsung (dari BantenRenderer)
     const outMinValue = profile.outMinRatio * axisMax;
     const outMaxValue = profile.outMaxRatio * axisMax;
 
-    dataOut = generateSmoothData(
+    dataOut = generateZabbixStyleData(
       startTs,
       endTs,
       outMinValue,
       outMaxValue,
       seed + 999,
       interval,
-      false, // isCCTV = false untuk memberikan natural variation pada CCTV upload
     );
   }
 

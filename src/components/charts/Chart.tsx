@@ -367,6 +367,15 @@ export function Chart({
             strokeDasharray="3,3" // Putus-putus lebih tegas: 3px on, 3px off
           />
         </pattern>
+
+        {/* FILTER: Glowing effect untuk OUT line Banten (biru tua) - subtle */}
+        <filter id="glowBlueCyan" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="1" result="coloredBlur" />
+          <feMerge>
+            <feMergeNode in="coloredBlur" />
+            <feMergeNode in="SourceGraphic" />
+          </feMerge>
+        </filter>
       </defs>
 
       {/* --- LAYER 1: Plot Area Background --- */}
@@ -419,16 +428,41 @@ export function Chart({
 
               {/* Render Trafik OUT (Untuk Banten: Area tumpuk di atas, Untuk Bali: Area dibalik ke bawah) */}
               {hasOutData && (
-                <path
-                  d={makeArea(
-                    `${iface.id}_out_y0`,
-                    `${iface.id}_out_y1`,
-                    drawOutDownwards,
+                <>
+                  <path
+                    d={makeArea(
+                      `${iface.id}_out_y0`,
+                      `${iface.id}_out_y1`,
+                      drawOutDownwards,
+                    )}
+                    fill={iface.colorOut}
+                    shapeRendering="crispEdges"
+                    opacity={opacityValue}
+                    filter={isBantenZabbix ? "url(#glowBlueCyan)" : undefined}
+                  />
+
+                  {/* Render Outline/Glow stroke untuk OUT di Banten */}
+                  {isBantenZabbix && stacked.length > 1 && (
+                    <path
+                      d={(() => {
+                        let pathStr = "";
+                        for (let i = 0; i < stacked.length; i++) {
+                          const x = getX(stacked[i].ts);
+                          const val = stacked[i][`${iface.id}_out_y1`];
+                          const y = getY(drawOutDownwards ? -val : val);
+                          pathStr += `${i === 0 ? "M" : "L"} ${x} ${y} `;
+                        }
+                        return pathStr;
+                      })()}
+                      fill="none"
+                      stroke={iface.colorOut}
+                      strokeWidth="0.5"
+                      opacity={0.6}
+                      filter="url(#glowBlueCyan)"
+                      shapeRendering="crispEdges"
+                    />
                   )}
-                  fill={iface.colorOut}
-                  shapeRendering="crispEdges"
-                  opacity={opacityValue}
-                />
+                </>
               )}
             </g>
           );
