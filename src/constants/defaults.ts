@@ -151,10 +151,11 @@ export const BANTEN_SITE_NAMES = [
 // ─── COLORS ───────────────────────────────────────────────────────────────────
 
 // Warna palette untuk interface Traffic
+// ether3 menjadi dominan untuk IN (hijau terang #93CA2D), OUT pakai warna ether2
 export const INTERFACE_COLORS = [
   { in: "#BCE249", out: "#CA89CB" }, // ether1
+  { in: "#93CA2D", out: "#A96DB0" }, // ether3 - DOMINAN (IN utama, OUT warna ether2)
   { in: "#A7D63A", out: "#A96DB0" }, // ether2
-  { in: "#93CA2D", out: "#8E5296" }, // ether3
   { in: "#76BD22", out: "#703878" }, // ether4
   { in: "#53A41B", out: "#511C54" }, // ether5
   { in: "#128B15", out: "#350035" }, // LAN

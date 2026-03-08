@@ -59,5 +59,6 @@ export interface IChartRenderer {
     seed: number,
     interval: number,
     axisMax?: number,
+    siteName?: string,
   ): { dataIn: DataPoint[]; dataOut: DataPoint[] };
 }

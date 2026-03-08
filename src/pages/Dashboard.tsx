@@ -607,19 +607,19 @@ export function Dashboard({ onLogout }: DashboardProps) {
         </div>
         {/* ------------------------------------- */}
 
-        <div style={{ marginLeft: "auto", display: "flex", gap: "6px" }}>
+        <div style={{ marginLeft: "auto", display: "flex", gap: "4px" }}>
           {/* TOMBOL AUTO REPORT BARU */}
           <button
             onClick={() => setShowReportModal(true)}
             style={topBtn("#33ccff", "#0a1a2a")}
           >
-            📄 Weekly Report
+            Generate Report
           </button>
           <button
             onClick={() => setShowNew(true)}
             style={topBtn("#33cc00", "#0a1a0a")}
           >
-            + Add
+            Add
           </button>
           <button
             onClick={() => setShowSettings(true)}

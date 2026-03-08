@@ -118,7 +118,9 @@ export function createBantenSites(
   const interfaceProfiles = renderer.getInterfaceProfiles(axisMaxLoad, name);
 
   const interfaces: SiteInterface[] = interfaceProfiles.map((profile, i) => {
-    const inSeed = index * 7919 + i * 1337;
+    // Seed unik untuk setiap site dan interface - gunakan hash dari name untuk variasi lebih
+    const nameHash = name.split('').reduce((a, b) => ((a << 5) - a) + b.charCodeAt(0), 0) >>> 0;
+    const inSeed = (index * 7919) + (i * 1337) + nameHash;
 
     // Gunakan renderer.generateInterfaceData() untuk generate data yang sesuai region
     const generatedData = renderer.generateInterfaceData(
@@ -128,6 +130,7 @@ export function createBantenSites(
       inSeed,
       interval,
       axisMaxLoad,
+      name,
     );
 
     return {

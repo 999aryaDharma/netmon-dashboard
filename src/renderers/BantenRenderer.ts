@@ -70,6 +70,7 @@ export class BantenRenderer implements IChartRenderer {
     seed: number,
     interval: number,
     axisMax: number = 100_000_000,
+    siteName?: string,
   ): { dataIn: DataPoint[]; dataOut: DataPoint[] } {
     return generateBantenInterfaceData(
       profile as {

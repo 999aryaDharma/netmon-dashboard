@@ -43,71 +43,57 @@ export class BaliRenderer implements IChartRenderer {
   }
 
   getInterfaceProfiles(axisMax: number, siteName?: string): InterfaceProfile[] {
-    const profiles: InterfaceProfile[] = [];
-
-    // Deteksi apakah ini backbone (1 Gbps)
-    const isBackbone = siteName?.toLowerCase().includes('backbone');
-
-    if (isBackbone) {
-      // ether1 - DOMINAN: Trafik tinggi bidirectional untuk backbone
-      profiles.push({
+    // KARENA STACKED (Ditumpuk), total inMaxRatio dijaga agar max ~1.0 (100% tinggi grafik)
+    return [
+      // ether1: Pondasi dasar (lumayan tebal, stabil di bawah)
+      {
         name: "ether1",
-        inMinRatio: 0.5, // 50% dari 1G = 500 Mbps minimum
-        inMaxRatio: 0.95, // 95% dari 1G = 950 Mbps maximum
-        outMinRatio: 0.15,
-        outMaxRatio: 0.5,
-      });
-
-      // ether4 - TIPIS: Trafik kecil bidirectional
-      profiles.push({
+        inMinRatio: 0.02,
+        inMaxRatio: 0.08,
+        outMinRatio: 0.1,
+        outMaxRatio: 0.2,
+      },
+      // ether2: Garis tengah (tipis)
+      {
+        name: "ether2",
+        inMinRatio: 0.1,
+        inMaxRatio: 0.25,
+        outMinRatio: 0.02,
+        outMaxRatio: 0.08,
+      },
+      // ether3: DOMINAN (Paling tebal, membentuk bukit utama 55%)
+      {
+        name: "ether3",
+        inMinRatio: 0.3,
+        inMaxRatio: 0.55,
+        outMinRatio: 0.2,
+        outMaxRatio: 0.45,
+      },
+      // ether4: Tipis, kadang-kadang paku noise
+      {
         name: "ether4",
-        inMinRatio: 0.04,
-        inMaxRatio: 0.08,
-        outMinRatio: 0.03,
-        outMaxRatio: 0.06,
-      });
-
-      // LAN - TIPIS: Trafik kecil bidirectional
-      profiles.push({
+        inMinRatio: 0.0,
+        inMaxRatio: 0.05,
+        outMinRatio: 0.0,
+        outMaxRatio: 0.05,
+      },
+      // ether5: Hampir 0, sesekali nongol
+      {
+        name: "ether5",
+        inMinRatio: 0.0,
+        inMaxRatio: 0.02,
+        outMinRatio: 0.0,
+        outMaxRatio: 0.02,
+      },
+      // LAN: Layer paling atas, nyaris 0, tapi ada paku tajam jarang-jarang
+      {
         name: "LAN",
-        inMinRatio: 0.04,
-        inMaxRatio: 0.08,
-        outMinRatio: 0.03,
-        outMaxRatio: 0.06,
-      });
-
-      return profiles;
-    }
-
-    // Profile default untuk site non-backbone
-    // ether1 - DOMINAN: Trafik utama bidirectional
-    profiles.push({
-      name: "ether1",
-      inMinRatio: 0.3,
-      inMaxRatio: 0.95,
-      outMinRatio: 0.15,
-      outMaxRatio: 0.5,
-    });
-
-    // ether4 - TIPIS: Trafik kecil bidirectional
-    profiles.push({
-      name: "ether4",
-      inMinRatio: 0.04,
-      inMaxRatio: 0.08,
-      outMinRatio: 0.03,
-      outMaxRatio: 0.06,
-    });
-
-    // LAN - TIPIS: Trafik kecil bidirectional
-    profiles.push({
-      name: "LAN",
-      inMinRatio: 0.04,
-      inMaxRatio: 0.08,
-      outMinRatio: 0.03,
-      outMaxRatio: 0.06,
-    });
-
-    return profiles;
+        inMinRatio: 0.0,
+        inMaxRatio: 0.03,
+        outMinRatio: 0.0,
+        outMaxRatio: 0.03,
+      },
+    ];
   }
 
   /**
@@ -123,6 +109,7 @@ export class BaliRenderer implements IChartRenderer {
     seed: number,
     interval: number,
     axisMax: number = 100_000_000,
+    siteName?: string,
   ): { dataIn: DataPoint[]; dataOut: DataPoint[] } {
     return generateBaliInterfaceData(
       profile,
@@ -131,6 +118,7 @@ export class BaliRenderer implements IChartRenderer {
       seed,
       interval,
       axisMax,
+      siteName,
     );
   }
 }

@@ -242,36 +242,34 @@ export function generateBaliInterfaceData(
   seed: number,
   interval: number,
   axisMax: number,
+  siteName?: string,
 ): {
   dataIn: { timestamp: number; value: number }[];
   dataOut: { timestamp: number; value: number }[];
 } {
-  // Bali: lebih volatile, sering burst
-  const volatilityFactor = 1.2; // Tingkatkan volatility 20% dibanding default
-  const burstinessFactor = 1.5; // Burst lebih sering
-
-  const dataIn = generateSmoothData(
+  // Gunakan Diurnal Data 6 Layers dengan PERSONALITY untuk IN
+  // Setiap site akan punya bentuk unik berdasarkan seed
+  const dataIn = generateDiurnalData6Layers(
     startTs,
     endTs,
     profile.inMinRatio * axisMax,
     profile.inMaxRatio * axisMax,
-    seed,
+    seed * 7919, // Multiplier besar agar seed tiap site jauh berbeda
     interval,
-    false, // Bukan CCTV
   );
 
-  const dataOut =
-    profile.outMinRatio !== undefined && profile.outMaxRatio !== undefined
-      ? generateSmoothData(
-          startTs,
-          endTs,
-          profile.outMinRatio * axisMax,
-          profile.outMaxRatio * axisMax,
-          seed + 997,
-          interval,
-          false, // Bukan CCTV
-        )
-      : [];
+  // Gunakan Diurnal Data 6 Layers dengan PERSONALITY untuk OUT
+  let dataOut: { timestamp: number; value: number }[] = [];
+  if (profile.outMinRatio !== undefined && profile.outMaxRatio !== undefined) {
+    dataOut = generateDiurnalData6Layers(
+      startTs,
+      endTs,
+      profile.outMinRatio * axisMax,
+      profile.outMaxRatio * axisMax,
+      (seed * 7919) + 997, // Seed berbeda untuk OUT
+      interval,
+    );
+  }
 
   return { dataIn, dataOut };
 }
@@ -323,9 +321,8 @@ function generateCalmFluctuatingData(
     }
 
     // --- 4. HITUNG FINAL VALUE (tanpa diurnal, tanpa weekend pattern) ---
-    let finalValue = min + range * Math.max(0, Math.min(1, 
-      currentWalk + jitter + spike
-    ));
+    let finalValue =
+      min + range * Math.max(0, Math.min(1, currentWalk + jitter + spike));
 
     // Clamping agar tetap dalam range aman
     const minBound = min + range * 0.02;
@@ -373,8 +370,8 @@ function generateZabbixStyleData(
         // BUKIT (High Traffic)
         // Stabil di atas selama 4 sampai 12 interval (jam)
         ticksRemaining = Math.floor(4 + rand() * 9);
-        // Tinggi bukit: 40% sampai 85% dari range maksimum
-        currentTarget = min + range * (0.4 + rand() * 0.45);
+        // Tinggi bukit: 40% sampai 80% dari range maksimum (dikurangi dari 85% agar ada margin)
+        currentTarget = min + range * (0.4 + rand() * 0.4);
       } else {
         // LEMBAH (Low Traffic)
         // Stabil di bawah selama 6 sampai 24 interval (jam)
@@ -392,8 +389,10 @@ function generateZabbixStyleData(
 
     let finalValue = currentTarget + jitter;
 
-    // Pastikan tidak keluar batas
-    finalValue = Math.max(min, Math.min(max, finalValue));
+    // Clamping ketat agar tidak melebihi max bound (95% dari max)
+    const maxBound = min + range * 0.95;
+    const minBound = min + range * 0.02;
+    finalValue = Math.max(minBound, Math.min(maxBound, finalValue));
 
     points.push({
       timestamp: ts,
@@ -401,6 +400,151 @@ function generateZabbixStyleData(
     });
   }
 
+  return points;
+}
+
+/**
+ * Data Generator khusus untuk Bali (Classic MRTG Style)
+ * Mengembalikan karakteristik asli: padat, aktif, baseline tinggi, 
+ * dengan jitter rapat dan drop tajam sesekali.
+ */
+function generateClassicMRTGData(
+  startTs: number,
+  endTs: number,
+  min: number,
+  max: number,
+  seed: number,
+  interval: number = 5 * 60 * 1000,
+): { timestamp: number; value: number }[] {
+  const points: { timestamp: number; value: number }[] = [];
+  const range = max - min;
+  const rand = seededRandom(seed);
+
+  // Karakteristik yang bikin grafiknya "padat" dan liar
+  const volatility = 0.4 + rand() * 0.4; // 0.4-0.8 (lebih liar)
+  const jitterAmp = 0.35 + rand() * 0.25; // 0.35-0.60 (jitter tinggi agar rapat)
+  const dropChance = 0.05; // 5% kemungkinan drop drastis (lembah tajam)
+
+  // Mulai dari baseline yang cukup tinggi (50% - 95% dari kapasitas)
+  let currentWalk = 0.5 + rand() * 0.45;
+
+  for (let ts = startTs; ts <= endTs; ts += interval) {
+    // Random walk dasar - lebih liar
+    currentWalk += (rand() - 0.5) * volatility * 0.6;
+    // Jaga agar base tetap cenderung di atas (plateau padat)
+    currentWalk = Math.max(0.4, Math.min(0.95, currentWalk));
+
+    let rawValue = currentWalk;
+
+    // Simulasi "Lembah/Drop" mendadak khas jaringan (turun ke 5-25%)
+    if (rand() < dropChance) {
+      rawValue *= (0.05 + rand() * 0.2); 
+    }
+
+    // Tambahkan jitter/noise kasar agar grafiknya terlihat padat layaknya rumput
+    const jitter = (rand() - 0.5) * jitterAmp;
+
+    // Hitung final value
+    let finalValue = min + range * Math.max(0, Math.min(1, rawValue + jitter));
+
+    // Clamping longgar - biarkan lebih liar tapi tetap dalam batas
+    const hardMax = min + range * 0.95;
+    const hardMin = min + range * 0.01;
+    finalValue = Math.max(hardMin, Math.min(hardMax, finalValue));
+
+    points.push({
+      timestamp: ts,
+      value: Math.floor(finalValue),
+    });
+  }
+  return points;
+}
+
+/**
+ * Data Generator STACKED (6 Layer) dengan PERSONALITY
+ * Setiap site akan memiliki bentuk, ketebalan, dan jam sibuk yang berbeda-beda
+ * berdasarkan "seed" (identitas unik)-nya.
+ */
+function generateDiurnalData6Layers(
+  startTs: number,
+  endTs: number,
+  min: number,
+  max: number,
+  seed: number,
+  interval: number,
+): { timestamp: number; value: number }[] {
+  const points: { timestamp: number; value: number }[] = [];
+  const range = max - min;
+  const rand = seededRandom(seed);
+  
+  // Shared random untuk bikin semua 6 layer mengalami "RTO/Drop" di detik yang persis sama
+  const sharedDropRand = seededRandom(12345 + Math.floor(startTs / 86400000) + seed); 
+
+  // --- SITE PERSONALITY TRAITS (Bikin tiap site beda bentuk) ---
+  // rand() menghasilkan angka unik yang selalu sama untuk site yang sama
+  const baseLoad = 0.20 + rand() * 0.75; // Ketebalan grafik (20% - 95% dari kapasitas)
+  const peakShift = (rand() - 0.5) * 10;  // Geser jam sibuk (Bisa maju/mundur hingga 5 jam)
+  const diurnalStrength = 0.3 + rand() * 0.7; // Seberapa drastis drop di malam hari (30-100%)
+  const volatility = 0.5 + rand() * 1.0; // Kekasaran rumput/noise (50-150%)
+  const hasLunchDip = rand() > 0.4; // 60% site punya pola turun saat jam istirahat siang
+  const weekendDropFactor = 0.2 + rand() * 0.5; // Weekend drop 20-70%
+
+  for (let ts = startTs; ts <= endTs; ts += interval) {
+    const date = new Date(ts);
+    const hour = date.getHours() + date.getMinutes() / 60;
+    const dayOfWeek = date.getDay();
+
+    // 1. Pola Waktu yang digeser berdasarkan "Kepribadian" site
+    let shiftedHour = hour + peakShift;
+    if (shiftedHour < 0) shiftedHour += 24;
+    if (shiftedHour >= 24) shiftedHour -= 24;
+
+    let hourFactor = (shiftedHour - 4) / 24; 
+    if (hourFactor < 0) hourFactor += 1;
+    
+    // 2. Bentuk Kurva Dasar - variasi lebih ekstrem
+    let diurnal = (Math.sin((hourFactor - 0.25) * 2 * Math.PI) + 1) / 2;
+    diurnal = Math.pow(diurnal, 0.8 + rand() * 1.0); // Variasi kelandaian (0.8-1.8)
+
+    // 3. Simulasi Jam Istirahat Siang (Drop jam 12:00 - 13:30)
+    if (hasLunchDip && hour >= 11.5 && hour <= 14) {
+      diurnal *= 0.5 + (rand() * 0.3); // Drop 50-80%
+    }
+
+    // 4. Terapkan kekuatan Siang/Malam (Ada site yang stabil terus 24 jam)
+    diurnal = (1 - diurnalStrength) + (diurnal * diurnalStrength);
+
+    // 5. Akhir pekan sepi (Penurunannya beda-beda tiap site)
+    if (dayOfWeek === 0 || dayOfWeek === 6) {
+      diurnal *= weekendDropFactor;
+    }
+
+    // Hitung level dasar
+    let baseLevel = diurnal * baseLoad;
+    baseLevel = Math.max(0.02, baseLevel); 
+
+    // 6. Jitter / Rumput yang kekasarannya beda-beda
+    const jitter = (rand() - 0.5) * 0.4 * baseLevel * volatility;
+    let rawValue = baseLevel + jitter;
+    
+    // 7. LOGIKA LAYER TIPIS / PAKU (ether4, ether5, LAN)
+    if (min === 0) {
+      if (rand() < 0.15 * volatility) {
+        rawValue = rand() * 0.9 * baseLoad; // Muncul paku sesekali
+      } else {
+        rawValue = rand() * 0.02 * baseLoad; // Sisanya rata/nyaris 0
+      }
+    }
+
+    // 8. Global Drop (Simulasi link kedip / RTO sejenak)
+    if (sharedDropRand() < 0.02) {
+      rawValue *= 0.02 + (rand() * 0.15); 
+    }
+
+    // Eksekusi nilai final
+    let finalValue = min + range * Math.max(0, Math.min(1, rawValue));
+    points.push({ timestamp: ts, value: Math.floor(finalValue) });
+  }
   return points;
 }
 
