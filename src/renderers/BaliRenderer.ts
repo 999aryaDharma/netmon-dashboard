@@ -42,16 +42,51 @@ export class BaliRenderer implements IChartRenderer {
     };
   }
 
-  getInterfaceProfiles(axisMax: number): InterfaceProfile[] {
+  getInterfaceProfiles(axisMax: number, siteName?: string): InterfaceProfile[] {
     const profiles: InterfaceProfile[] = [];
 
+    // Deteksi apakah ini backbone (1 Gbps)
+    const isBackbone = siteName?.toLowerCase().includes('backbone');
+
+    if (isBackbone) {
+      // ether1 - DOMINAN: Trafik tinggi bidirectional untuk backbone
+      profiles.push({
+        name: "ether1",
+        inMinRatio: 0.5, // 50% dari 1G = 500 Mbps minimum
+        inMaxRatio: 0.95, // 95% dari 1G = 950 Mbps maximum
+        outMinRatio: 0.15,
+        outMaxRatio: 0.5,
+      });
+
+      // ether4 - TIPIS: Trafik kecil bidirectional
+      profiles.push({
+        name: "ether4",
+        inMinRatio: 0.04,
+        inMaxRatio: 0.08,
+        outMinRatio: 0.03,
+        outMaxRatio: 0.06,
+      });
+
+      // LAN - TIPIS: Trafik kecil bidirectional
+      profiles.push({
+        name: "LAN",
+        inMinRatio: 0.04,
+        inMaxRatio: 0.08,
+        outMinRatio: 0.03,
+        outMaxRatio: 0.06,
+      });
+
+      return profiles;
+    }
+
+    // Profile default untuk site non-backbone
     // ether1 - DOMINAN: Trafik utama bidirectional
     profiles.push({
       name: "ether1",
       inMinRatio: 0.3,
-      inMaxRatio: 0.95, // Naikkan ke 95% dari axisMax untuk range lebih besar
+      inMaxRatio: 0.95,
       outMinRatio: 0.15,
-      outMaxRatio: 0.5, // Kurangi OUT ke 50% agar lebih seimbang
+      outMaxRatio: 0.5,
     });
 
     // ether4 - TIPIS: Trafik kecil bidirectional
@@ -60,7 +95,7 @@ export class BaliRenderer implements IChartRenderer {
       inMinRatio: 0.04,
       inMaxRatio: 0.08,
       outMinRatio: 0.03,
-      outMaxRatio: 0.06, // Seimbang dengan IN
+      outMaxRatio: 0.06,
     });
 
     // LAN - TIPIS: Trafik kecil bidirectional
@@ -69,7 +104,7 @@ export class BaliRenderer implements IChartRenderer {
       inMinRatio: 0.04,
       inMaxRatio: 0.08,
       outMinRatio: 0.03,
-      outMaxRatio: 0.06, // Seimbang dengan IN
+      outMaxRatio: 0.06,
     });
 
     return profiles;

@@ -277,12 +277,12 @@ export function generateBaliInterfaceData(
 }
 
 /**
- * Generate data yang sangat smooth dan kalem untuk Banten IN (Download traffic)
+ * Generate data yang smooth tapi benar-benar acak untuk CCTV/Banten
  * Karakteristik:
- * - Volatility sangat rendah (0.15-0.3)
- * - Spike sangat minimal
- * - Jitter kecil
- * - Pattern stabil dengan diurnal effect
+ * - Smooth (volatility rendah) - cocok untuk traffic CCTV
+ * - TIDAK ADA pola diurnal/harian yang predictable
+ * - TIDAK ADA pattern weekend yang konsisten
+ * - Random walk murni dengan jitter
  */
 function generateCalmFluctuatingData(
   startTs: number,
@@ -296,66 +296,39 @@ function generateCalmFluctuatingData(
   const range = max - min;
   const rand = seededRandom(seed);
 
-  // Karakteristik SANGAT smooth dan kalem
-  const volatility = 0.15 + rand() * 0.15; // 0.15-0.3 (sangat rendah)
-  const jitterAmp = 0.05 + rand() * 0.1; // 0.05-0.15 (minimal)
-  const spikeChance = 0.02 + rand() * 0.03; // 2-5% (very rare)
-  const spikeMag = 0.3 + rand() * 0.3; // 0.3-0.6x (very small)
-  const baselineRatio = 0.3 + rand() * 0.4; // 30-70% baseline
-  const peakHour = 8 + Math.floor(rand() * 12); // 08:00-20:00
-  const diurnalStrength = 0.3 + rand() * 0.4; // 30-70% (strong pattern untuk tenang)
-  const weekendDrop = 0.1 + rand() * 0.3;
+  // Karakteristik smooth tapi acak
+  const volatility = 0.2 + rand() * 0.2; // 0.2-0.4 (rendah untuk smooth)
+  const jitterAmp = 0.1 + rand() * 0.15; // 0.1-0.25 (jitter halus)
+  const spikeChance = 0.05 + rand() * 0.05; // 5-10% (spike sesekali)
+  const spikeMag = 0.4 + rand() * 0.4; // 0.4-0.8x (spike moderat)
+  // Baseline ratio tinggi dengan variasi acak
+  const baselineRatio = 0.8 + rand() * 0.15; // 80-95% baseline
 
   let currentWalk = baselineRatio;
-  let trendDirection = rand() > 0.5 ? 1 : -1;
 
   for (let ts = startTs; ts <= endTs; ts += interval) {
-    const date = new Date(ts);
-    const hour = date.getHours() + date.getMinutes() / 60;
-    const dayOfWeek = date.getDay();
+    // --- 1. RANDOM WALK MURNI (tanpa momentum yang predictable) ---
+    // Setiap titik benar-benar acak, tidak ada trend yang bertahan
+    const walkChange = (rand() - 0.5) * volatility;
+    currentWalk += walkChange;
+    currentWalk = Math.max(0.1, Math.min(0.95, currentWalk));
 
-    // Trend change very rare (5% instead of 25%)
-    if (rand() < 0.05) {
-      trendDirection *= -1;
-    }
+    // --- 2. JITTER HALUS (untuk variasi kecil yang smooth) ---
+    const jitter = (rand() - 0.5) * jitterAmp;
 
-    // Very gentle walk change
-    const walkChange = (rand() - 0.5) * volatility * 0.5;
-    currentWalk += walkChange * trendDirection;
-    currentWalk = Math.max(0.05, Math.min(0.95, currentWalk));
-
-    // Diurnal cycle (strong untuk pattern yang konsisten dan tenang)
-    const hourAngle = ((hour - peakHour) / 12) * Math.PI;
-    const diurnalNoise = (rand() - 0.5) * 0.1; // Minimal noise
-    const diurnalFactor = Math.max(
-      0.2,
-      1 -
-        diurnalStrength +
-        diurnalStrength * Math.cos(hourAngle) +
-        diurnalNoise,
-    );
-
-    // Weekend
-    const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
-    const weekendMod = isWeekend ? weekendDrop : 1.0;
-
-    // Very gentle jitter
-    const jitter = (rand() - 0.5) * jitterAmp * 0.5;
-
-    // Very rare spike
+    // --- 3. SPIKE SESekali (tidak terlalu sering, tidak terlalu jarang) ---
     let spike = 0;
     if (rand() < spikeChance) {
-      spike = rand() * spikeMag * 0.2;
+      spike = (rand() - 0.5) * spikeMag; // Bisa naik atau turun
     }
 
-    // Calm final value
-    let rawValue = currentWalk * diurnalFactor * weekendMod;
+    // --- 4. HITUNG FINAL VALUE (tanpa diurnal, tanpa weekend pattern) ---
     let finalValue =
-      min + range * Math.max(0, Math.min(1, rawValue + jitter + spike));
+      min + range * Math.max(0, Math.min(1, currentWalk + jitter + spike));
 
-    // Aggressive clamping untuk mencegah outlier
-    const minBound = min + range * 0.05;
-    const maxBound = min + range * 0.95;
+    // Clamping agar tetap dalam range aman
+    const minBound = min + range * 0.02;
+    const maxBound = min + range * 0.98;
     finalValue = Math.max(minBound, Math.min(maxBound, finalValue));
 
     points.push({
@@ -400,24 +373,19 @@ export function generateBantenInterfaceData(
     interval,
   );
 
-  // Generate data OUT (CCTV Upload dengan range yang bervariasi per site)
-  // Setiap site punya karakteristik OUT berbeda, tidak selalu sama
+  // Generate data OUT (CCTV Upload dengan range yang stabil dan rendah)
+  // Gunakan profile.outMinRatio dan outMaxRatio untuk consistency
   let dataOut: { timestamp: number; value: number }[] = [];
   if (profile.outMinRatio !== undefined && profile.outMaxRatio !== undefined) {
-    // Hitung range OUT yang unik per seed/site
-    const rand = seededRandom(seed * 1234);
-    const outVariation = rand() * 0.35; // 0 - 0.35 variasi
-
-    // Range OUT yang bervariasi dari 0.25 sampai 0.6 tergantung seed
-    const dynamicOutMin = Math.min(0.25 + outVariation, 0.55);
-    const dynamicOutMax = dynamicOutMin + 0.08; // Range tetap sempit (0.08) untuk tetap stabil
-    const dynamicOutMaxClamped = Math.min(dynamicOutMax, 0.95); // Jangan melebihi chart
+    // Gunakan ratio dari profile secara langsung (dari BantenRenderer)
+    const outMinValue = profile.outMinRatio * axisMax;
+    const outMaxValue = profile.outMaxRatio * axisMax;
 
     dataOut = generateSmoothData(
       startTs,
       endTs,
-      dynamicOutMin * axisMax,
-      dynamicOutMaxClamped * axisMax,
+      outMinValue,
+      outMaxValue,
       seed + 999,
       interval,
       false, // isCCTV = false untuk memberikan natural variation pada CCTV upload

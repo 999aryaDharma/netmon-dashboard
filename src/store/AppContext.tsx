@@ -13,7 +13,8 @@ import {
   dbClearAll,
 } from "../db/indexeddb";
 import { DEFAULT_SITE_NAMES, BANTEN_SITE_NAMES } from "../constants/defaults";
-import { createDefaultSites } from "../utils/siteHelpers";
+import { createBaliSites } from "../utils/baliSiteHelpers";
+import { createBantenSites } from "../utils/bantenSiteHelpers";
 
 interface AppState {
   sites: Site[];
@@ -87,7 +88,7 @@ function buildAllDefaultSites(): Site[] {
   // Bali
   DEFAULT_SITE_NAMES.forEach((name, index) => {
     try {
-      const { loadSite, latencySite } = createDefaultSites(name, index, "bali");
+      const { loadSite, latencySite } = createBaliSites(name, index);
       sites.push(loadSite, latencySite);
     } catch (err) {
       console.error(`Error creating Bali site "${name}":`, err);
@@ -97,7 +98,7 @@ function buildAllDefaultSites(): Site[] {
   // Banten
   BANTEN_SITE_NAMES.forEach((name, index) => {
     try {
-      const { loadSite, latencySite } = createDefaultSites(name, index, "banten");
+      const { loadSite, latencySite } = createBantenSites(name, index);
       sites.push(loadSite, latencySite);
     } catch (err) {
       console.error(`Error creating Banten site "${name}":`, err);

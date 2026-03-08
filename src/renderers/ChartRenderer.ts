@@ -49,7 +49,7 @@ export interface IChartRenderer {
   // Get configurations
   getAxisConfig(): AxisConfig;
   getColorPalette(): ColorPalette;
-  getInterfaceProfiles(axisMax: number): InterfaceProfile[];
+  getInterfaceProfiles(axisMax: number, siteName?: string): InterfaceProfile[];
 
   // Data generation helpers
   generateInterfaceData(

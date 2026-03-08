@@ -21,9 +21,9 @@ export class BantenRenderer implements IChartRenderer {
   private static readonly BIDIRECTIONAL = false;
   private static readonly SHOW_ZERO_LINE = false;
 
-  // Zabbix-style colors
+  // Zabbix-style colors: Biru tua (IN/Receive) vs Biru muda (OUT/Sent)
   private static readonly COLORS = [
-    { in: "#4baeac", out: "#329795" },
+    { in: "#329795", out: "#4baeac" }, // IN muda, OUT tua
     { in: "#329795", out: "#4baeac" },
   ];
 
@@ -46,16 +46,19 @@ export class BantenRenderer implements IChartRenderer {
     };
   }
 
-  getInterfaceProfiles(axisMax: number): InterfaceProfile[] {
+  getInterfaceProfiles(axisMax: number, siteName?: string): InterfaceProfile[] {
     // Zabbix-style: Hanya 1 interface dengan 2 garis
-    // IN = Area fluktuatif (Download), OUT = Area stabil (CCTV Upload)
+    // IN = Stabil Rendah (Receive/Download) - Biru Muda - 5-15%
+    // OUT = Fluktuatif Tinggi (Send/Upload) - Biru Tua - 15-95%
+
+    // Profile default untuk site Banten (semua capacity)
     return [
       {
         name: "Interface-1",
-        inMinRatio: 0.1, // 10% - Batas bawah trafik fluktuatif
-        inMaxRatio: 0.8, // 80% - Batas atas trafik fluktuatif (naik turun)
-        outMinRatio: 0.5, // 50% - Trafik stabil bawah (CCTV Upload)
-        outMaxRatio: 0.55, // 55% - Trafik stabil atas (CCTV Upload) - Jaraknya sangat sempit agar stabil
+        inMinRatio: 0.05, // IN minimum rendah (5%)
+        inMaxRatio: 0.15, // IN maximum rendah (15%) - stabil dan steady
+        outMinRatio: 0.15, // OUT minimum naik (15%)
+        outMaxRatio: 0.95, // OUT maximum tinggi (95%) - fluktuatif dominan
       },
     ];
   }
