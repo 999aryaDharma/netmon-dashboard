@@ -19,12 +19,13 @@ export function createBaliSites(
   // UBAH DI SINI: Interval 1 Jam agar performa browser tetap aman
   const interval = 60 * 60 * 1000;
 
-  const pingData = generatePingData(
-    startTs,
-    now,
-    { baseRtt: 15, variance: 3, seed: index * 100 },
-    interval,
-  );
+  // COMMENTED OUT - Ping data sementara tidak digunakan
+  // const pingData = generatePingData(
+  //   startTs,
+  //   now,
+  //   { baseRtt: 15, variance: 3, seed: index * 100 },
+  //   interval,
+  // );
 
   // Helper: Parse kecepatan dari nama site (format: "Nama Site - Available XXX Mbps/Gbps")
   const parseSpeed = (
@@ -160,30 +161,42 @@ export function createBaliSites(
     interfaces,
   };
 
+  // COMMENTED OUT - Ping chart sementara tidak digunakan
+  // const latencySite: Site = {
+  //   id: existingLatencyId,
+  //   name: `${name}`,
+  //   type: "ping",
+  //   unit: "ms",
+  //   axisMax: 100,
+  //   interfaces: [
+  //     {
+  //       id: existingLatency?.interfaces[0]?.id || `latency-iface-${index}-1`,
+  //       name: "ping",
+  //       colorIn: LATENCY_COLORS.in,
+  //       colorOut: LATENCY_COLORS.out,
+  //       dataIn: [],
+  //       dataOut: [],
+  //       dataRtt: mergeData(
+  //         existingLatency?.interfaces[0]?.dataRtt || [],
+  //         pingData.rtt,
+  //       ),
+  //       dataLoss: mergeData(
+  //         existingLatency?.interfaces[0]?.dataLoss || [],
+  //         pingData.loss,
+  //       ),
+  //     },
+  //   ],
+  // };
+
+  // Return loadSite saja, latencySite kosong untuk sementara
   const latencySite: Site = {
     id: existingLatencyId,
     name: `${name}`,
     type: "ping",
     unit: "ms",
     axisMax: 100,
-    interfaces: [
-      {
-        id: existingLatency?.interfaces[0]?.id || `latency-iface-${index}-1`,
-        name: "ping",
-        colorIn: LATENCY_COLORS.in,
-        colorOut: LATENCY_COLORS.out,
-        dataIn: [],
-        dataOut: [],
-        dataRtt: mergeData(
-          existingLatency?.interfaces[0]?.dataRtt || [],
-          pingData.rtt,
-        ),
-        dataLoss: mergeData(
-          existingLatency?.interfaces[0]?.dataLoss || [],
-          pingData.loss,
-        ),
-      },
-    ],
+    region,
+    interfaces: [],
   };
 
   return { loadSite, latencySite };

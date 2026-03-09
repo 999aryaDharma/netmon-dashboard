@@ -488,11 +488,34 @@ function generateDiurnalData6Layers(
   const volatility = 0.5 + rand() * 1.0; // Kekasaran rumput/noise (50-150%)
   const hasLunchDip = rand() > 0.4; // 60% site punya pola turun saat jam istirahat siang
   const weekendDropFactor = 0.2 + rand() * 0.5; // Weekend drop 20-70%
+  
+  // --- LOSS / PUTUS TRAITS (Random untuk beberapa site saja) ---
+  const hasOutages = rand() < 0.45; // 45% site akan mengalami putus/RTO
+  const outageChance = 0.015 + rand() * 0.02; // 1.5-3.5% chance per interval (lebih sering)
+  const outageDuration = 3 + Math.floor(rand() * 9); // 3-12 interval putus (15-60 menit)
+  const outageRemaining = { count: 0 }; // Tracker untuk durasi outage
 
   for (let ts = startTs; ts <= endTs; ts += interval) {
     const date = new Date(ts);
     const hour = date.getHours() + date.getMinutes() / 60;
     const dayOfWeek = date.getDay();
+
+    // --- OUTAGE / LOSS LOGIC (Putus sesekali untuk site tertentu) ---
+    if (hasOutages) {
+      // Jika sedang dalam outage, skip dan return 0
+      if (outageRemaining.count > 0) {
+        outageRemaining.count--;
+        points.push({ timestamp: ts, value: 0 });
+        continue;
+      }
+      
+      // Chance untuk mulai outage baru
+      if (rand() < outageChance) {
+        outageRemaining.count = outageDuration;
+        points.push({ timestamp: ts, value: 0 });
+        continue;
+      }
+    }
 
     // 1. Pola Waktu yang digeser berdasarkan "Kepribadian" site
     let shiftedHour = hour + peakShift;
