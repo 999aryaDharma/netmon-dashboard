@@ -184,6 +184,10 @@ export function Chart({
       // OBVIT/Small sites: Step 1 M
       step = 1_000_000;
       finalMax = 5_000_000;
+    } else if (site.axisMax === 8.0) {
+      // ETLE Load Average: Step 2 (0, 2, 4, 6, 8, 10, 12, 14, 16)
+      step = 2;
+      finalMax = 16;
     } else {
       // Fallback: Gunakan algoritma nice step untuk nilai custom
       const peak = maxStack * 1.05;
@@ -228,7 +232,10 @@ export function Chart({
     const ticks = [];
     const unit = site.unit || "bps";
     for (let v = 0; v <= finalMax; v += step) {
-      ticks.push({ val: v, y: getYFunc(v), label: formatRRDLabel(v, unit) });
+      // For ETLE (load), just show the number; for others use formatRRDLabel
+      const label =
+        site.region === "etle" ? v.toString() : formatRRDLabel(v, unit);
+      ticks.push({ val: v, y: getYFunc(v), label });
       if (isBidirectional && v !== 0) {
         // Untuk sumbu negatif (Out) - hanya untuk traffic bidirectional
         ticks.push({
@@ -283,7 +290,51 @@ export function Chart({
     const date = new Date(ts);
     const rangeHours = timeRange / (1000 * 60 * 60); // Hitung rentang waktu dalam satuan Jam
 
-    // Format yyyy-m-dd
+    // Format khusus ETLE: "dd MMM" (e.g., "19 May")
+    if (site.region === "etle") {
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const dd = date.getDate();
+      const monthName = months[date.getMonth()];
+      return `${dd} ${monthName}`;
+    }
+
+    // Format khusus Bali: "Mon 30 Mar" (Hari 3 huruf dd Mmm)
+    if (site.region === "bali") {
+      const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      const months = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+      ];
+      const dayName = days[date.getDay()];
+      const dd = date.getDate();
+      const monthName = months[date.getMonth()];
+      return `${dayName} ${dd} ${monthName}`;
+    }
+
+    // Format yyyy-m-dd untuk region lain
     const yyyy = date.getFullYear();
     const m = date.getMonth() + 1; // 'm' tanpa 0 di depan (1-12)
     const dd = date.getDate().toString().padStart(2, "0"); // 'dd' dengan 0 di depan (01-31)
@@ -313,7 +364,14 @@ export function Chart({
   };
 
   const currentBg =
-    site.region === "banten" ? THEME.chartBgBanten : THEME.chartBg;
+    site.region === "etle"
+      ? "#FFFFFF"
+      : site.region === "banten"
+        ? THEME.chartBgBanten
+        : THEME.chartBg;
+
+  // Add chart title for ETLE (positioned at top center)
+  const showTitle = site.region === "etle";
 
   return (
     <svg width={width} height={height} style={{ background: currentBg }}>
@@ -347,26 +405,31 @@ export function Chart({
           <path
             d={`M ${gridWidth} 0 L 0 0 0 ${gridHeight}`}
             fill="none"
-            stroke="#444444"
-            strokeWidth="0.5"
+            stroke={
+              site.region === "etle" ? "rgba(100, 100, 100, 0.3)" : "#444444"
+            }
+            strokeWidth={site.region === "etle" ? 1 : 0.5}
+            strokeDasharray={site.region === "etle" ? "3,3" : undefined}
           />
         </pattern>
 
         {/* PATTERN 2: Grid Overlay (Putih - Dashed/Putus-putus - Di atas data) */}
-        <pattern
-          id="dashedGrid"
-          width={gridWidth}
-          height={gridHeight}
-          patternUnits="userSpaceOnUse"
-        >
-          <path
-            d={`M ${gridWidth} 0 L 0 0 0 ${gridHeight}`}
-            fill="none"
-            stroke="rgba(255,255,255,0.2)"
-            strokeWidth="1.2"
-            strokeDasharray="3,3" // Putus-putus lebih tegas: 3px on, 3px off
-          />
-        </pattern>
+        {site.region !== "etle" && (
+          <pattern
+            id="dashedGrid"
+            width={gridWidth}
+            height={gridHeight}
+            patternUnits="userSpaceOnUse"
+          >
+            <path
+              d={`M ${gridWidth} 0 L 0 0 0 ${gridHeight}`}
+              fill="none"
+              stroke="rgba(255,255,255,0.2)"
+              strokeWidth="1.2"
+              strokeDasharray="3,3"
+            />
+          </pattern>
+        )}
 
         {/* FILTER: Glowing effect untuk OUT line Banten (biru tua) - subtle */}
         <filter id="glowBlueCyan" x="-50%" y="-50%" width="200%" height="200%">
@@ -469,15 +532,46 @@ export function Chart({
         }
       })}
 
+      {/* --- LAYER 3.5: ETLE Outline (Black outline for red layer) --- */}
+      {site.region === "etle" &&
+        stacked.length > 1 &&
+        (() => {
+          // Find the 15 Minute Average interface (last one after reverse)
+          const interfaces = [...site.interfaces].reverse();
+          const redInterface = interfaces[0]; // The last interface is the red one (15-minute)
+
+          if (redInterface) {
+            let pathStr = "";
+            for (let i = 0; i < stacked.length; i++) {
+              const x = getX(stacked[i].ts);
+              const val = stacked[i][`${redInterface.id}_y1`];
+              const y = getY(val);
+              pathStr += `${i === 0 ? "M" : "L"} ${x} ${y} `;
+            }
+
+            return (
+              <path
+                d={pathStr}
+                fill="none"
+                stroke="#000000"
+                strokeWidth="1.5"
+                shapeRendering="crispEdges"
+              />
+            );
+          }
+        })()}
+
       {/* --- LAYER 4: Grid Overlay (Dashed/Putus-putus di atas data) --- */}
-      <rect
-        x={PAD.left}
-        y={PAD.top}
-        width={chartW}
-        height={chartH}
-        fill="url(#dashedGrid)"
-        style={{ pointerEvents: "none" }}
-      />
+      {site.region !== "etle" && (
+        <rect
+          x={PAD.left}
+          y={PAD.top}
+          width={chartW}
+          height={chartH}
+          fill="url(#dashedGrid)"
+          style={{ pointerEvents: "none" }}
+        />
+      )}
 
       {/* --- LAYER 5: Zero Line (Garis Tengah) --- */}
       {isBidirectional && (
@@ -491,6 +585,24 @@ export function Chart({
         />
       )}
 
+      {/* --- LAYER 5.5: ETLE Red Dashed Reference Lines --- */}
+      {site.region === "etle" &&
+        [2, 4, 6, 8, 10, 12, 14].map((loadVal) => {
+          const y = getY(loadVal);
+          return (
+            <line
+              key={`etle-line-${loadVal}`}
+              x1={PAD.left}
+              y1={y}
+              x2={PAD.left + chartW}
+              y2={y}
+              stroke="rgba(255, 0, 0, 0.3)"
+              strokeWidth="1"
+              strokeDasharray="3,3"
+            />
+          );
+        })}
+
       {/* --- LAYER 6: Label Y-Axis --- */}
       {yTicks.map(({ y, label }, i) => (
         <text
@@ -499,7 +611,7 @@ export function Chart({
           y={y}
           textAnchor="end"
           dominantBaseline="central"
-          fill={THEME.text}
+          fill={site.region === "etle" ? "#000000" : THEME.text}
           fontSize="10"
           fontFamily="Arial, sans-serif"
         >
@@ -510,6 +622,11 @@ export function Chart({
       {/* --- LAYER 7: Label X-Axis --- */}
       {xTicks.map(({ ts, x }, i) => {
         const isLast = i === xTicks.length - 1;
+        const isFirst = i === 0;
+        // Adjust text anchor for first label to avoid crowding
+        const anchor = isLast ? "end" : isFirst ? "start" : "middle";
+        // Add offset for first label to move it away from the axis
+        const xOffset = isFirst ? 12 : 0;
         return (
           <g key={i}>
             <line
@@ -521,10 +638,10 @@ export function Chart({
               strokeWidth={1}
             />
             <text
-              x={x}
+              x={x + xOffset}
               y={PAD.top + chartH + 18}
-              textAnchor={isLast ? "end" : "middle"}
-              fill={THEME.text}
+              textAnchor={anchor}
+              fill={site.region === "etle" ? "#000000" : THEME.text}
               fontSize="10"
               fontFamily="Arial, sans-serif"
             >
@@ -568,6 +685,21 @@ export function Chart({
         strokeWidth="1.2"
         strokeDasharray="3,3"
       />
+
+      {/* --- LAYER 10: Chart Title (For ETLE) --- */}
+      {showTitle && (
+        <text
+          x={width / 2}
+          y={PAD.top - 8}
+          textAnchor="middle"
+          fill="#000000"
+          fontSize="11"
+          fontFamily="JetBrains Mono, monospace"
+          fontWeight="bold"
+        >
+          {site.name}
+        </text>
+      )}
     </svg>
   );
 }

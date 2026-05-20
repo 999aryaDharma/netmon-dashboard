@@ -53,10 +53,10 @@ export async function generateWeeklyReportDocx(
 
   // Nama bulan untuk placeholder {BULAN}
   const namaBulan = bulan[endDate.getMonth()];
-  
+
   // Tanggal pembuatan laporan untuk placeholder {tanggal_buat}
-  const sekarang = new Date();
-  const tanggalBuat = `${sekarang.getDate()} ${bulan[sekarang.getMonth()]} ${sekarang.getFullYear()}, ${sekarang.getHours().toString().padStart(2, '0')}:${sekarang.getMinutes().toString().padStart(2, '0')}:${sekarang.getSeconds().toString().padStart(2, '0')}`;
+  // Gunakan tanggal akhir periode laporan
+  const tanggalBuat = `${endDate.getDate()} ${bulan[endDate.getMonth()]} ${endDate.getFullYear()}`;
 
   try {
     const response = await fetch("/template-laporan.docx");

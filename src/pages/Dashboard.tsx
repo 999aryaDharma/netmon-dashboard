@@ -6,7 +6,11 @@ import { SiteEditor } from "../components/editor/SiteEditor";
 import { Settings } from "../components/common/Settings";
 import { clearSession } from "../utils/auth";
 import type { Site, TimeRange } from "../types";
-import { DEFAULT_SITE_NAMES, BANTEN_SITE_NAMES } from "../constants/defaults";
+import {
+  DEFAULT_SITE_NAMES,
+  BANTEN_SITE_NAMES,
+  ETLE_BALI_SITES,
+} from "../constants/defaults";
 
 // Import untuk fungsi Auto Report
 import { toPng } from "html-to-image";
@@ -40,9 +44,9 @@ export function Dashboard({ onLogout }: DashboardProps) {
   const [graphFilter, setGraphFilter] = useState<
     "all" | "traffic" | "load" | "ping"
   >("all");
-  const [regionFilter, setRegionFilter] = useState<"all" | "bali" | "banten">(
-    "all",
-  );
+  const [regionFilter, setRegionFilter] = useState<
+    "all" | "bali" | "banten" | "etle"
+  >("all");
   const [showAllSites, setShowAllSites] = useState(false);
   const [detailChart, setDetailChart] = useState<Site | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
@@ -189,9 +193,36 @@ export function Dashboard({ onLogout }: DashboardProps) {
 
         setGenStatus(`${periodLabel}: ${site.name}`);
 
+        // Import fungsi untuk regenerate data
+        const { createBaliSites } = await import("../utils/baliSiteHelpers");
+        const { createBantenSites } =
+          await import("../utils/bantenSiteHelpers");
+
         // Untuk Banten: Capture screenshot langsung (800x300px)
         if (reportRegion === "banten") {
-          setHiddenSite(site);
+          // Regenerate site data untuk time range laporan
+          let siteForReport = site;
+          if (site.region === "bali") {
+            const { loadSite } = createBaliSites(
+              site.name,
+              0,
+              undefined,
+              monthStart.getTime(),
+              monthEnd.getTime(),
+            );
+            siteForReport = loadSite;
+          } else if (site.region === "banten") {
+            const { loadSite } = createBantenSites(
+              site.name,
+              0,
+              undefined,
+              monthStart.getTime(),
+              monthEnd.getTime(),
+            );
+            siteForReport = loadSite;
+          }
+
+          setHiddenSite(siteForReport);
           setHiddenTimeRange({
             start: monthStart.getTime(),
             end: monthEnd.getTime(),
@@ -222,8 +253,30 @@ export function Dashboard({ onLogout }: DashboardProps) {
           continue; // Lanjut ke site berikutnya, Word generation di bawah
         }
 
-        // Untuk Bali: Gunakan template Word seperti biasa
-        setHiddenSite(site);
+        // Untuk Bali: Generate ulang data site untuk time range laporan
+        // Regenerate site data untuk time range laporan
+        let siteForReportBali = site;
+        if (site.region === "bali") {
+          const { loadSite } = createBaliSites(
+            site.name,
+            0, // index tidak penting karena kita hanya butuh data
+            undefined,
+            currentWeek.start.getTime(),
+            currentWeek.end.getTime(),
+          );
+          siteForReportBali = loadSite;
+        } else if (site.region === "banten") {
+          const { loadSite } = createBantenSites(
+            site.name,
+            0,
+            undefined,
+            monthStart.getTime(),
+            monthEnd.getTime(),
+          );
+          siteForReportBali = loadSite;
+        }
+
+        setHiddenSite(siteForReportBali);
         setHiddenTimeRange({
           start: currentWeek.start.getTime(),
           end: currentWeek.end.getTime(),
@@ -401,12 +454,16 @@ export function Dashboard({ onLogout }: DashboardProps) {
             const isDefaultBali = DEFAULT_SITE_NAMES.some((bali) =>
               nameLower.includes(bali.toLowerCase()),
             );
-            // Pastikan bukan site Banten (prioritaskan Banten)
+            // Pastikan bukan site Banten atau ETLE (prioritaskan Banten/ETLE)
             const isBanten =
               BANTEN_SITE_NAMES.some((banten) =>
                 nameLower.includes(banten.toLowerCase()),
               ) || nameLower.includes("banten");
-            if (isBanten) return false;
+            const isETLE =
+              ETLE_BALI_SITES.some((etle) =>
+                nameLower.includes(etle.toLowerCase()),
+              ) || nameLower.includes("load average");
+            if (isBanten || isETLE) return false;
 
             const hasBaliKeyword =
               nameLower.includes("bali") ||
@@ -432,6 +489,18 @@ export function Dashboard({ onLogout }: DashboardProps) {
               nameLower.includes("lebak") ||
               nameLower.includes("tangerang");
             return isDefaultBanten || hasBantenKeyword;
+          });
+        } else if (regionFilter === "etle") {
+          // Filter untuk site ETLE Bali (Load Average monitoring)
+          result = result.filter((s) => {
+            const nameLower = s.name.toLowerCase();
+            // ONLY match ETLE sites - exclude Banten sites
+            const isETLE =
+              s.region === "etle" ||
+              ETLE_BALI_SITES.some((etle) =>
+                nameLower.includes(etle.toLowerCase()),
+              );
+            return isETLE;
           });
         }
         return result;
@@ -675,7 +744,7 @@ export function Dashboard({ onLogout }: DashboardProps) {
         <span style={{ fontSize: "11px", color: "#888" }}>|</span>
 
         <span style={{ fontSize: "11px", color: "#888" }}>Region:</span>
-        {(["all", "bali", "banten"] as const).map((region) => (
+        {(["all", "bali", "banten", "etle"] as const).map((region) => (
           <button
             key={region}
             onClick={() => setRegionFilter(region)}
@@ -1745,8 +1814,11 @@ function GridSiteCard({
   const fontFamilies = {
     bali: "JetBrains Mono, monospace", // MRTG style
     banten: "Open Sans, sans-serif", // Zabbix style
+    etle: "JetBrains Mono, monospace", // ETLE - same as Bali MRTG style
   };
-  const font = fontFamilies[site.region || "bali"];
+  const font =
+    fontFamilies[(site.region || "bali") as keyof typeof fontFamilies] ||
+    "JetBrains Mono, monospace";
 
   return (
     <div

@@ -47,6 +47,33 @@ export const DEFAULT_SITE_NAMES = [
   "cctv simpang SPKUNTI",
 ];
 
+// ─── ETLE BALI SITES (Load Average - 23 CP Locations) ──────────────────────────
+export const ETLE_BALI_SITES = [
+  "01 NUSA-DUA-1",
+  "02 NUSA DUA-2",
+  "03 SARANGAN",
+  "04 CP-KRISNA",
+  "05 CP-PINTU MASUK BANDARA",
+  "06 CP-PINTU KELUAR BANDARA",
+  "07 CP-SIMPANG JIMBARAN",
+  "08 EPOLICE-BUAGAN",
+  "09 CP-DENPASAR CARGO",
+  "10 CP-DENPASAR MAHENDRA",
+  "11 CP-DENPASAR COKRO",
+  "12 CP-DENPASAR KFC",
+  "13 CP-BADUNG SUNSET ROAD",
+  "14 CP-BADUNG LIO PATITENGET",
+  "15 CP-GIANYAR SAKAH",
+  "16 CP-GIANYAR BPD LAMA",
+  "17 CP-TABANAN TELKOM",
+  "18 CP-TABANAN DPRD",
+  "19 CP-BULELENG SIMPANG PANJ",
+  "20 CP-JEMBRANA GAJAH MADA",
+  "21 CP-KLUNGKUNG LEPANG",
+  "22 CP-BANGLI RS LAMA",
+  "23 CP-KARANGASEM SUBAGAN",
+];
+
 // ─── BANTEN SITES ─────────────────────────────────────────────────────────────
 // Fiber Optik International
 export const BANTEN_FIBER_OPTIK_SITES = [

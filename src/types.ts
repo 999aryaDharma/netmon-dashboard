@@ -1,5 +1,5 @@
 export type SiteType = "traffic" | "latency" | "ping";
-export type SiteRegion = "bali" | "banten";
+export type SiteRegion = "bali" | "banten" | "etle";
 export type GraphType = "traffic" | "load"; // traffic = bidirectional, load = unidirectional
 
 export interface DataPoint {

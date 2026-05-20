@@ -12,9 +12,14 @@ import {
   dbDeleteSite,
   dbClearAll,
 } from "../db/indexeddb";
-import { DEFAULT_SITE_NAMES, BANTEN_SITE_NAMES } from "../constants/defaults";
+import {
+  DEFAULT_SITE_NAMES,
+  BANTEN_SITE_NAMES,
+  ETLE_BALI_SITES,
+} from "../constants/defaults";
 import { createBaliSites } from "../utils/baliSiteHelpers";
 import { createBantenSites } from "../utils/bantenSiteHelpers";
+import { createETLEBaliSite } from "../utils/etleSiteHelpers";
 
 interface AppState {
   sites: Site[];
@@ -102,6 +107,16 @@ function buildAllDefaultSites(): Site[] {
       sites.push(loadSite, latencySite);
     } catch (err) {
       console.error(`Error creating Banten site "${name}":`, err);
+    }
+  });
+
+  // ETLE Bali (Load Average Monitoring - 23 CP sites)
+  ETLE_BALI_SITES.forEach((name, index) => {
+    try {
+      const { loadSite } = createETLEBaliSite(name, index);
+      sites.push(loadSite);
+    } catch (err) {
+      console.error(`Error creating ETLE Bali site "${name}":`, err);
     }
   });
 

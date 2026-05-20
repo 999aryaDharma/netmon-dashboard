@@ -97,8 +97,7 @@ async function handleGenerateWeeklyReport(payload: any) {
       linebreaks: true,
     });
 
-    // Tanggal pembuatan laporan
-    const sekarang = new Date();
+    // Tanggal pembuatan laporan - gunakan tanggal akhir periode
     const bulan = [
       "Januari",
       "Februari",
@@ -113,7 +112,7 @@ async function handleGenerateWeeklyReport(payload: any) {
       "November",
       "Desember",
     ];
-    const tanggalBuat = `${sekarang.getDate()} ${bulan[sekarang.getMonth()]} ${sekarang.getFullYear()}, ${sekarang.getHours().toString().padStart(2, "0")}:${sekarang.getMinutes().toString().padStart(2, "0")}:${sekarang.getSeconds().toString().padStart(2, "0")}`;
+    const tanggalBuat = `${endDate.getDate()} ${bulan[endDate.getMonth()]} ${endDate.getFullYear()}`;
 
     doc.render({
       ...imageMap,
