@@ -621,3 +621,69 @@ export function generateBantenInterfaceData(
 
   return { dataIn, dataOut };
 }
+
+/**
+ * Generate data ETLE Load Average - smooth seperti RRDTool asli
+ * Karakteristik: naik turun gradual, tidak spiky, mirip CPU load average
+ */
+export function generateETLESmoothData(
+  startTs: number,
+  endTs: number,
+  min: number,
+  max: number,
+  seed: number,
+  interval: number = 60 * 60 * 1000,
+): { timestamp: number; value: number }[] {
+  const points: { timestamp: number; value: number }[] = [];
+  const range = max - min;
+  const rand = seededRandom(seed);
+
+  // Load average bergerak lambat - inertia tinggi
+  let currentLoad = min + range * (0.3 + rand() * 0.4);
+  const targetSpeed = 0.04 + rand() * 0.06; // Seberapa cepat bergerak ke target baru
+  let targetLoad = currentLoad;
+  let targetHoldCount = 0;
+
+  // Personality per site
+  const baseLevel = 0.2 + rand() * 0.6;
+  const peakHour = 8 + rand() * 4; // jam 8-12 paling sibuk
+  const hasAfternoonBump = rand() > 0.4;
+
+  for (let ts = startTs; ts <= endTs; ts += interval) {
+    const date = new Date(ts);
+    const hour = date.getHours() + date.getMinutes() / 60;
+    const dayOfWeek = date.getDay();
+
+    // --- Pola diurnal yang smooth ---
+    const morningPeak = Math.max(0, Math.sin(((hour - peakHour) / 8) * Math.PI));
+    const afternoonBump = hasAfternoonBump
+      ? Math.max(0, Math.sin(((hour - 14) / 4) * Math.PI)) * 0.3
+      : 0;
+    const nightDrop = hour < 5 || hour > 22 ? 0.3 : 1.0;
+    const weekendMod = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.6 : 1.0;
+
+    const diurnal = (morningPeak + afternoonBump) * nightDrop * weekendMod;
+    const idealLoad = min + range * Math.max(0.1, baseLevel * 0.5 + diurnal * baseLevel);
+
+    // --- Slow random walk menuju target ---
+    if (targetHoldCount <= 0) {
+      // Tetapkan target baru yang dekat dengan idealLoad
+      targetLoad = idealLoad + (rand() - 0.5) * range * 0.15;
+      targetLoad = Math.max(min + range * 0.05, Math.min(min + range * 0.95, targetLoad));
+      targetHoldCount = Math.floor(3 + rand() * 8); // Tahan 3-11 interval
+    }
+    targetHoldCount--;e
+
+    // Gerak smooth menuju target (EMA-style)
+    currentLoad += (targetLoad - currentLoad) * targetSpeed;
+
+    // Micro jitter sangat halus
+    const jitter = (rand() - 0.5) * range * 0.02;
+    let finalValue = currentLoad + jitter;
+    finalValue = Math.max(min + range * 0.02, Math.min(min + range * 0.98, finalValue));
+
+    points.push({ timestamp: ts, value: finalValue });
+  }
+
+  return points;
+}

@@ -5,7 +5,7 @@ import {
   ColorPalette,
   InterfaceProfile,
 } from "./ChartRenderer";
-import { generateSmoothData } from "../utils/dataGen";
+import { generateETLESmoothData, generateSmoothData } from "../utils/dataGen";
 
 /**
  * ETLE Bali Renderer - Load Average Style
@@ -15,7 +15,7 @@ import { generateSmoothData } from "../utils/dataGen";
  * - Yellow/Orange/Red color palette for visual intensity
  */
 export class ETLERenderer implements IChartRenderer {
-  readonly region = "bali" as const;
+  readonly region = "etle" as const;
 
   private static readonly INTERFACE_COUNT = 3;
   private static readonly BIDIRECTIONAL = false; // Load is unidirectional
@@ -89,36 +89,29 @@ export class ETLERenderer implements IChartRenderer {
     endTs: number,
     seed: number,
     interval: number,
-    axisMax: number = 4.0, // Typical max load average
+    axisMax: number = 4.0,
     siteName?: string,
   ): { dataIn: DataPoint[]; dataOut: DataPoint[] } {
-    // For load average, we typically use axisMax around 4.0 for 4-core systems
-    // Adjust based on typical load patterns
     const isOneMin = profile.name.includes("1 Minute");
     const isFiveMin = profile.name.includes("5 Minute");
 
-    // Different volatility for each load metric
-    // 1-minute is most volatile, 15-minute is smoothest
-    let volatility = isOneMin ? 0.8 : isFiveMin ? 0.5 : 0.3;
-    let baselineRatio = 0.3 + (seed % 100) / 500; // 30-50% baseline
+    // 1-min paling volatile, 15-min paling smooth
+    const smoothness = isOneMin ? 1.0 : isFiveMin ? 0.8 : 0.6;
+    const uniqueSeed = seed + (isOneMin ? 0 : isFiveMin ? 500 : 1000);
 
-    // 1-minute is more reactive, so higher min/max
-    let min = axisMax * (isOneMin ? 0.2 : isFiveMin ? 0.3 : 0.4);
-    let max = axisMax * (isOneMin ? 0.85 : isFiveMin ? 0.75 : 0.65);
+    // Range berbeda per layer - 15-min lebih rendah dari 1-min (karena smoothed)
+    const minRatio = isOneMin ? 0.1 : isFiveMin ? 0.12 : 0.14;
+    const maxRatio = isOneMin ? 0.75 : isFiveMin ? 0.65 : 0.55;
 
-    const data = generateSmoothData(
+    const data = generateETLESmoothData(
       startTs,
       endTs,
-      min,
-      max,
-      seed,
+      axisMax * minRatio,
+      axisMax * maxRatio,
+      uniqueSeed,
       interval,
-      false, // Not CCTV
     );
 
-    return {
-      dataIn: data,
-      dataOut: data, // For unidirectional, dataIn and dataOut are the same
-    };
+    return { dataIn: data, dataOut: data };
   }
 }

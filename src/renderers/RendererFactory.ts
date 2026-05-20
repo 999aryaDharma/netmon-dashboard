@@ -54,6 +54,8 @@ export class RendererFactory {
 /**
  * Helper function untuk mendapatkan renderer
  */
-export function getRenderer(region?: "bali" | "banten" | "etle"): IChartRenderer {
+export function getRenderer(
+  region?: "bali" | "banten" | "etle",
+): IChartRenderer {
   return RendererFactory.getRenderer(region);
 }

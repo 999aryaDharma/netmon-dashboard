@@ -44,7 +44,7 @@ export interface InterfaceProfile {
  * Base Chart Renderer Interface
  */
 export interface IChartRenderer {
-  readonly region: "bali" | "banten";
+  readonly region: "bali" | "banten" | "etle";
 
   // Get configurations
   getAxisConfig(): AxisConfig;

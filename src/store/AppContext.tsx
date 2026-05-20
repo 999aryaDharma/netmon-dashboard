@@ -78,47 +78,54 @@ interface AppContextValue {
   deleteSite: (id: string) => Promise<void>;
   setTimeRange: (range: TimeRange) => void;
   clearAllData: () => Promise<void>;
-  regenerateAllData: () => Promise<boolean>;
+  regenerateRegionData: (
+    region: "bali" | "banten" | "etle" | "all",
+  ) => Promise<boolean>;
   exportData: () => string;
   importData: (json: string) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-// ─── Helper: buat semua site default (Bali + Banten) ─────────────────────────
+// ─── Helper: build sites berdasarkan region ───────────────────────────────────
 
-function buildAllDefaultSites(): Site[] {
+function buildSitesByRegion(
+  region: "bali" | "banten" | "etle" | "all",
+): Site[] {
   const sites: Site[] = [];
 
-  // Bali
-  DEFAULT_SITE_NAMES.forEach((name, index) => {
-    try {
-      const { loadSite, latencySite } = createBaliSites(name, index);
-      sites.push(loadSite, latencySite);
-    } catch (err) {
-      console.error(`Error creating Bali site "${name}":`, err);
-    }
-  });
+  if (region === "bali" || region === "all") {
+    DEFAULT_SITE_NAMES.forEach((name, index) => {
+      try {
+        const { loadSite, latencySite } = createBaliSites(name, index);
+        sites.push(loadSite, latencySite);
+      } catch (err) {
+        console.error(`[Bali] Error creating site "${name}":`, err);
+      }
+    });
+  }
 
-  // Banten
-  BANTEN_SITE_NAMES.forEach((name, index) => {
-    try {
-      const { loadSite, latencySite } = createBantenSites(name, index);
-      sites.push(loadSite, latencySite);
-    } catch (err) {
-      console.error(`Error creating Banten site "${name}":`, err);
-    }
-  });
+  if (region === "banten" || region === "all") {
+    BANTEN_SITE_NAMES.forEach((name, index) => {
+      try {
+        const { loadSite, latencySite } = createBantenSites(name, index);
+        sites.push(loadSite, latencySite);
+      } catch (err) {
+        console.error(`[Banten] Error creating site "${name}":`, err);
+      }
+    });
+  }
 
-  // ETLE Bali (Load Average Monitoring - 23 CP sites)
-  ETLE_BALI_SITES.forEach((name, index) => {
-    try {
-      const { loadSite } = createETLEBaliSite(name, index);
-      sites.push(loadSite);
-    } catch (err) {
-      console.error(`Error creating ETLE Bali site "${name}":`, err);
-    }
-  });
+  if (region === "etle" || region === "all") {
+    ETLE_BALI_SITES.forEach((name, index) => {
+      try {
+        const { loadSite } = createETLEBaliSite(name, index);
+        sites.push(loadSite);
+      } catch (err) {
+        console.error(`[ETLE] Error creating site "${name}":`, err);
+      }
+    });
+  }
 
   return sites;
 }
@@ -133,7 +140,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let sites = await dbGetAllSites();
 
       if (sites.length === 0) {
-        const defaultSites = buildAllDefaultSites();
+        console.log("[AppContext] DB kosong, membangun default sites...");
+        const defaultSites = buildSitesByRegion("all");
         for (const site of defaultSites) {
           try {
             await dbPutSite(site);
@@ -144,9 +152,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         sites = defaultSites;
       }
 
+      console.log(`[AppContext] Loaded ${sites.length} sites`);
       dispatch({ type: "SET_SITES", payload: sites });
     } catch (err) {
-      console.error("Error loading sites:", err);
+      console.error("[AppContext] Error loading sites:", err);
       dispatch({ type: "SET_LOADING", payload: false });
     }
   }, []);
@@ -180,24 +189,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     dispatch({ type: "SET_SITES", payload: [] });
   }, []);
 
-  const regenerateAllData = useCallback(async () => {
-    try {
-      const freshSites = buildAllDefaultSites();
-      await dbClearAll();
-      for (const site of freshSites) {
-        try {
-          await dbPutSite(site);
-        } catch (err) {
-          console.error(`Error saving regenerated site "${site.name}":`, err);
+  // Regenerate per region — region lain dipertahankan dari DB
+  const regenerateRegionData = useCallback(
+    async (region: "bali" | "banten" | "etle" | "all"): Promise<boolean> => {
+      try {
+        let finalSites: Site[];
+
+        if (region === "all") {
+          finalSites = buildSitesByRegion("all");
+        } else {
+          // Ambil sites region lain dari DB agar tidak hilang
+          const existingSites = await dbGetAllSites();
+          const otherSites = existingSites.filter((s) => s.region !== region);
+          const newRegionSites = buildSitesByRegion(region);
+          finalSites = [...otherSites, ...newRegionSites];
         }
+
+        await dbClearAll();
+
+        for (const site of finalSites) {
+          try {
+            await dbPutSite(site);
+          } catch (err) {
+            console.error(`Error saving site "${site.name}":`, err);
+          }
+        }
+
+        dispatch({ type: "SET_SITES", payload: finalSites });
+        console.log(
+          `[AppContext] Regenerated ${region}: ${finalSites.length} total sites`,
+        );
+        return true;
+      } catch (err) {
+        console.error("[AppContext] Error regenerating region data:", err);
+        return false;
       }
-      dispatch({ type: "SET_SITES", payload: freshSites });
-      return true;
-    } catch (err) {
-      console.error("Error regenerating data:", err);
-      return false;
-    }
-  }, []);
+    },
+    [],
+  );
 
   const exportData = useCallback(
     (): string =>
@@ -223,7 +252,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         deleteSite,
         setTimeRange,
         clearAllData,
-        regenerateAllData,
+        regenerateRegionData,
         exportData,
         importData,
       }}

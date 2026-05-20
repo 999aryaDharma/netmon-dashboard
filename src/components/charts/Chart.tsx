@@ -277,12 +277,30 @@ export function Chart({
     return top + bottom + "Z";
   };
 
-  const xTickCount = width < 600 ? 3 : 5; // Kurangi ticks agar grid lebih kotak
+  const xTickCount = width < 600 ? 4 : 6;
   const xTicks = [];
-  const step = timeRange / xTickCount;
-  for (let i = 0; i <= xTickCount; i++) {
-    const ts = startTs + step * i;
-    xTicks.push({ ts, x: getX(ts) });
+  const xStepMs = timeRange / xTickCount;
+  // Snap ke jam bulat untuk spacing yang rapi
+  const snapMs =
+    xStepMs >= 12 * 3600000
+      ? 24 * 3600000
+      : xStepMs >= 4 * 3600000
+        ? 6 * 3600000
+        : xStepMs >= 2 * 3600000
+          ? 3 * 3600000
+          : 3600000;
+  const firstSnapped = Math.ceil(startTs / snapMs) * snapMs;
+  for (let ts = firstSnapped; ts <= endTs; ts += snapMs) {
+    if (xTicks.length <= xTickCount + 1) {
+      xTicks.push({ ts, x: getX(ts) });
+    }
+  }
+  // Pastikan ada tick di ujung kanan (end)
+  if (
+    xTicks.length === 0 ||
+    xTicks[xTicks.length - 1].ts < endTs - xStepMs * 0.5
+  ) {
+    xTicks.push({ ts: endTs, x: getX(endTs) });
   }
 
   // Helper format waktu NOC Style (Cerdas / Dinamis)
@@ -447,7 +465,13 @@ export function Chart({
         y={PAD.top}
         width={chartW}
         height={chartH}
-        fill={site.region === "banten" ? THEME.chartBgBanten : THEME.chartBg}
+        fill={
+          site.region === "etle"
+            ? "#FFFFFF"
+            : site.region === "banten"
+              ? THEME.chartBgBanten
+              : THEME.chartBg
+        }
         stroke="none"
       />
 

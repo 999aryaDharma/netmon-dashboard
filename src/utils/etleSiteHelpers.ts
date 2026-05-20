@@ -1,12 +1,13 @@
 import type { Site, SiteInterface } from "../types";
-import { getRenderer } from "../renderers/RendererFactory";
+import { generateSmoothData } from "./dataGen";
 import { mergeData } from "./siteHelpers";
 
-/**
- * Create ETLE Bali Site - Load Average Monitoring
- * Each site has 3 interfaces: 1min, 5min, 15min load averages
- * Data is generated as stacked load metrics
- */
+const ETLE_COLORS = [
+  "#EACC00", // 1 Minute - Yellow (layer bawah)
+  "#EA8F00", // 5 Minute - Orange (layer tengah)
+  "#FF0000", // 15 Minute - Red (layer atas)
+];
+
 export function createETLEBaliSite(
   name: string,
   index: number,
@@ -14,70 +15,59 @@ export function createETLEBaliSite(
   customStartTs?: number,
   customEndTs?: number,
 ): { loadSite: Site } {
-  const region = "etle";
   const now = customEndTs ?? Date.now();
-  // 1 Year of history
   const startTs = customStartTs ?? now - 365 * 24 * 3_600_000;
-  // 1 hour interval for load data
-  const interval = 60 * 60 * 1000;
+  const interval = 60 * 60 * 1000; // 1 jam
+  const axisMax = 8.0;
 
-  // ETLE sites are unidirectional (load average only, no bidirectional traffic)
-  // Typical max load: 4.0 for quad-core, but we'll allow up to 8.0 for flexibility
-  const axisMaxLoad = 8.0; // Load average max (in units, not bps)
-
-  // Check existing site
-  const existingLoadId = `load-etle-${index}-${name.toLowerCase().replace(/\s+/g, "-")}`;
+  const existingLoadId = `load-etle-${index}-${name
+    .toLowerCase()
+    .replace(/\s+/g, "-")}`;
   const existingLoad = existingSites?.find((s) => s.id === existingLoadId);
 
-  // Get ETLE renderer for color palette and interface profiles
-  const renderer = getRenderer("etle");
-  const colorPalette = renderer.getColorPalette();
-  const interfaceProfiles = renderer.getInterfaceProfiles(axisMaxLoad, name);
+  const nameHash =
+    name.split("").reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0) >>> 0;
 
-  // Generate interfaces (1min, 5min, 15min load averages)
-  const interfaces: SiteInterface[] = interfaceProfiles.map((profile, i) => {
-    // Unique seed for each site and interface
-    const nameHash =
-      name.split("").reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0) >>> 0;
-    const inSeed = index * 7919 + i * 1337 + nameHash;
+  // Nilai dirancang agar total stacked TIDAK melebihi axisMax=8
+  // Max total: 2.5 + 2.0 + 1.5 = 6.0 — aman di bawah 8
+  const layerConfigs = [
+    { name: "1 Minute Average", min: 0.5, max: 2.5 },
+    { name: "5 Minute Average", min: 0.3, max: 2.0 },
+    { name: "15 Minute Average", min: 0.2, max: 1.5 },
+  ];
 
-    // Generate interface data using ETLE renderer
-    const generatedData = renderer.generateInterfaceData(
-      profile,
+  const interfaces: SiteInterface[] = layerConfigs.map((cfg, i) => {
+    const seed = index * 7919 + i * 1337 + nameHash;
+
+    const dataIn = generateSmoothData(
       startTs,
       now,
-      inSeed,
+      cfg.min,
+      cfg.max,
+      seed,
       interval,
-      axisMaxLoad,
-      name,
+      false,
     );
 
     return {
       id: existingLoad?.interfaces[i]?.id || `iface-etle-${index}-${i}`,
-      name: profile.name,
-      colorIn: colorPalette.interfaces[i]?.in || "#F4E4A6",
-      colorOut: colorPalette.interfaces[i]?.out || "#F4E4A6",
-      dataIn: mergeData(
-        existingLoad?.interfaces[i]?.dataIn || [],
-        generatedData.dataIn,
-      ),
-      dataOut: mergeData(
-        existingLoad?.interfaces[i]?.dataOut || [],
-        generatedData.dataOut,
-      ),
+      name: cfg.name,
+      colorIn: ETLE_COLORS[i],
+      colorOut: ETLE_COLORS[i],
+      dataIn: mergeData(existingLoad?.interfaces[i]?.dataIn || [], dataIn),
+      dataOut: [],
     };
   });
 
-  // Create the load site
   const loadSite: Site = {
     id: existingLoadId,
     name: `${name} - Load Average`,
-    type: "latency", // Use latency type for unidirectional data
+    type: "latency",
     unit: "load",
-    axisMax: axisMaxLoad,
+    axisMax,
     interfaces,
-    region: "etle" as any, // Store as "etle" region
-    graphType: "load", // Explicitly mark as load graph (unidirectional)
+    region: "etle", // tidak perlu "as any" karena SiteRegion sudah include "etle"
+    graphType: "load",
   };
 
   return { loadSite };

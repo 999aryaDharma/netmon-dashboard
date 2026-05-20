@@ -3,16 +3,13 @@ import { changePassword } from "../../utils/auth";
 import { useApp } from "../../store/AppContext";
 
 export function Settings({ onClose }: { onClose: () => void }) {
-  const {
-    clearAllData,
-    regenerateAllData,
-    exportData,
-    importData,
-  } = useApp();
+  const { clearAllData, regenerateRegionData, exportData, importData } =
+    useApp();
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
+  const [regenLoading, setRegenLoading] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const changePw = async () => {
@@ -32,33 +29,28 @@ export function Settings({ onClose }: { onClose: () => void }) {
     setMsg("Password updated.");
   };
 
-  const doRegenerate = async () => {
+  const doRegenRegion = async (region: "bali" | "banten" | "etle" | "all") => {
+    const labels: Record<string, string> = {
+      bali: "Bali (MRTG)",
+      banten: "Banten (Zabbix)",
+      etle: "ETLE Load Average",
+      all: "Semua Region",
+    };
     if (
-      confirm(
-        "Regenerate ALL data with current timeframe? This will replace existing data.",
+      !confirm(
+        `Regenerate data untuk ${labels[region]}?\nData region lain tidak terpengaruh.`,
       )
-    ) {
-      const success = await regenerateAllData();
-      alert(
-        success
-          ? "Data regenerated with current time!"
-          : "Failed to regenerate.",
-      );
-    }
-  };
-
-  const doRegenerateFullYear = async () => {
-    if (
-      confirm(
-        "Regenerate ALL data for FULL YEAR (1 Jan - 31 Dec)? This will replace existing data.",
-      )
-    ) {
-      const success = await regenerateAllData();
-      alert(
-        success
-          ? "Full year data generated successfully!"
-          : "Failed to regenerate.",
-      );
+    )
+      return;
+    setMsg("");
+    setErr("");
+    setRegenLoading(region);
+    try {
+      const success = await regenerateRegionData(region);
+      if (success) setMsg(`✓ Berhasil regenerate ${labels[region]}!`);
+      else setErr(`Gagal regenerate ${labels[region]}.`);
+    } finally {
+      setRegenLoading(null);
     }
   };
 
@@ -95,6 +87,17 @@ export function Settings({ onClose }: { onClose: () => void }) {
     outline: "none",
   };
 
+  const regionBtns: {
+    region: "bali" | "banten" | "etle" | "all";
+    label: string;
+    color: string;
+  }[] = [
+    { region: "bali", label: "🌴 Bali (MRTG)", color: "#33cc00" },
+    { region: "banten", label: "🏭 Banten (Zabbix)", color: "#33ccff" },
+    { region: "etle", label: "📡 ETLE (Load Average)", color: "#ffaa00" },
+    { region: "all", label: "📦 Semua Region", color: "#cc66ff" },
+  ];
+
   return (
     <div
       onClick={(e) => {
@@ -113,7 +116,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
     >
       <div
         style={{
-          width: "400px",
+          width: "440px",
           background: "#141414",
           border: "1px solid #2a2a2a",
           borderRadius: "3px",
@@ -151,6 +154,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
             x
           </button>
         </div>
+
         <div
           style={{
             padding: "18px",
@@ -159,8 +163,39 @@ export function Settings({ onClose }: { onClose: () => void }) {
             gap: "20px",
           }}
         >
+          {/* Feedback messages */}
+          {msg && (
+            <div
+              style={{
+                fontSize: "11px",
+                color: "#33cc00",
+                padding: "6px 10px",
+                background: "#0a1a0a",
+                border: "1px solid #1a3a1a",
+                borderRadius: "2px",
+              }}
+            >
+              {msg}
+            </div>
+          )}
+          {err && (
+            <div
+              style={{
+                fontSize: "11px",
+                color: "#cc3333",
+                padding: "6px 10px",
+                background: "#1a0a0a",
+                border: "1px solid #3a1a1a",
+                borderRadius: "2px",
+              }}
+            >
+              {err}
+            </div>
+          )}
+
+          {/* Change Password */}
           <section>
-            <div style={sectionLabel}>Change Password</div>
+            <div style={sL}>Change Password</div>
             <div
               style={{ display: "flex", flexDirection: "column", gap: "8px" }}
             >
@@ -178,13 +213,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setConfirmPw(e.target.value)}
                 style={inp}
               />
-              {msg && (
-                <div style={{ fontSize: "11px", color: "#33cc00" }}>{msg}</div>
-              )}
-              {err && (
-                <div style={{ fontSize: "11px", color: "#cc3333" }}>{err}</div>
-              )}
-              <button onClick={changePw} style={actionBtn}>
+              <button onClick={changePw} style={aBtn("#33cc00")}>
                 Update Password
               </button>
             </div>
@@ -192,16 +221,17 @@ export function Settings({ onClose }: { onClose: () => void }) {
 
           <div style={{ height: "1px", background: "#1e1e1e" }} />
 
+          {/* Backup / Restore */}
           <section>
-            <div style={sectionLabel}>Backup / Restore</div>
+            <div style={sL}>Backup / Restore</div>
             <div style={{ display: "flex", gap: "8px" }}>
-              <button onClick={doExport} style={actionBtn}>
+              <button onClick={doExport} style={aBtn("#33cc00")}>
                 Export JSON
               </button>
               <button
                 onClick={() => fileRef.current?.click()}
                 style={{
-                  ...actionBtn,
+                  ...aBtn("#33cc00"),
                   background: "none",
                   borderColor: "#333",
                   color: "#666",
@@ -221,35 +251,82 @@ export function Settings({ onClose }: { onClose: () => void }) {
 
           <div style={{ height: "1px", background: "#1e1e1e" }} />
 
+          {/* Regenerate per Region */}
           <section>
-            <div style={{ ...sectionLabel, color: "#773333" }}>Danger Zone</div>
-            {/* <button
-              onClick={doRegenerate}
-              style={{ ...actionBtn, borderColor: '#3333aa', color: '#aa33aa', background: 'none', marginBottom: '8px' }}
-            >
-              Regenerate Data (Current Time)
-            </button> */}
-            <button
-              onClick={doRegenerateFullYear}
+            <div style={sL}>Regenerate Full Year Data</div>
+            <div
               style={{
-                ...actionBtn,
-                borderColor: "#3366aa",
-                color: "#aa66aa",
-                background: "none",
-                marginBottom: "8px",
+                fontSize: "10px",
+                color: "#555",
+                marginBottom: "12px",
+                lineHeight: "1.6",
               }}
             >
-              Regenerate Full Year (1 Jan - 31 Dec)
-            </button>
+              Pilih region yang ingin di-regenerate. <br />
+              Data region lain{" "}
+              <span style={{ color: "#888" }}>tidak akan terpengaruh</span>.
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: "8px",
+              }}
+            >
+              {regionBtns.map(({ region, label, color }) => {
+                const isLoading = regenLoading === region;
+                const isDisabled = regenLoading !== null;
+                return (
+                  <button
+                    key={region}
+                    onClick={() => doRegenRegion(region)}
+                    disabled={isDisabled}
+                    style={{
+                      padding: "10px 12px",
+                      background: isLoading ? color + "11" : "none",
+                      border: `1px solid ${isDisabled ? "#333" : color + "99"}`,
+                      borderRadius: "2px",
+                      color: isDisabled ? "#444" : color,
+                      fontFamily: "JetBrains Mono, monospace",
+                      fontSize: "11px",
+                      cursor: isDisabled ? "not-allowed" : "pointer",
+                      textAlign: "left",
+                      transition: "all 0.15s",
+                    }}
+                  >
+                    {isLoading ? `⟳ Generating...` : label}
+                  </button>
+                );
+              })}
+            </div>
+            {regenLoading && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  fontSize: "10px",
+                  color: "#555",
+                  textAlign: "center",
+                }}
+              >
+                Sedang memproses data, harap tunggu...
+              </div>
+            )}
+          </section>
+
+          <div style={{ height: "1px", background: "#1e1e1e" }} />
+
+          {/* Danger Zone */}
+          <section>
+            <div style={{ ...sL, color: "#773333" }}>Danger Zone</div>
             <button
               onClick={async () => {
-                if (confirm("Delete ALL data?")) await clearAllData();
+                if (confirm("Delete ALL data? Semua site akan hilang."))
+                  await clearAllData();
               }}
               style={{
-                ...actionBtn,
-                borderColor: "#441111",
-                color: "#aa3333",
+                ...aBtn("#aa3333"),
                 background: "none",
+                borderColor: "#441111",
               }}
             >
               Reset All Data
@@ -261,20 +338,24 @@ export function Settings({ onClose }: { onClose: () => void }) {
   );
 }
 
-const sectionLabel: React.CSSProperties = {
+const sL: React.CSSProperties = {
   fontSize: "10px",
   color: "#555",
   letterSpacing: "2px",
   textTransform: "uppercase",
   marginBottom: "10px",
 };
-const actionBtn: React.CSSProperties = {
-  padding: "7px 14px",
-  background: "#0a2a1a",
-  border: "1px solid #33cc00",
-  borderRadius: "2px",
-  color: "#33cc00",
-  fontFamily: "JetBrains Mono, monospace",
-  fontSize: "11px",
-  cursor: "pointer",
-};
+
+function aBtn(color: string): React.CSSProperties {
+  return {
+    padding: "7px 14px",
+    background: "#0a1a0a",
+    border: `1px solid ${color}`,
+    borderRadius: "2px",
+    color,
+    fontFamily: "JetBrains Mono, monospace",
+    fontSize: "11px",
+    cursor: "pointer",
+  };
+}
+  
