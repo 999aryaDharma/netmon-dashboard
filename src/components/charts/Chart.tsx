@@ -184,10 +184,10 @@ export function Chart({
       // OBVIT/Small sites: Step 1 M
       step = 1_000_000;
       finalMax = 5_000_000;
-    } else if (site.axisMax === 8.0) {
-      // ETLE Load Average: Step 2 (0, 2, 4, 6, 8, 10, 12, 14, 16)
-      step = 2;
-      finalMax = 16;
+    } else if (site.region === "etle") {
+      // ETLE Load Average: fixed 0, 5, 10, 15
+      step = 5;
+      finalMax = 15;
     } else {
       // Fallback: Gunakan algoritma nice step untuk nilai custom
       const peak = maxStack * 1.05;
@@ -278,29 +278,54 @@ export function Chart({
   };
 
   const xTickCount = width < 600 ? 4 : 6;
-  const xTicks = [];
-  const xStepMs = timeRange / xTickCount;
-  // Snap ke jam bulat untuk spacing yang rapi
-  const snapMs =
-    xStepMs >= 12 * 3600000
-      ? 24 * 3600000
-      : xStepMs >= 4 * 3600000
-        ? 6 * 3600000
-        : xStepMs >= 2 * 3600000
-          ? 3 * 3600000
-          : 3600000;
-  const firstSnapped = Math.ceil(startTs / snapMs) * snapMs;
-  for (let ts = firstSnapped; ts <= endTs; ts += snapMs) {
-    if (xTicks.length <= xTickCount + 1) {
-      xTicks.push({ ts, x: getX(ts) });
+  // ── X Axis ticks: spasi merata, tidak overlap ──────────────────────────────
+  // ── X Axis: hitung interval agar label tidak overlap ──────────────────────
+  const xTicks: { ts: number; x: number }[] = [];
+  {
+    const rangeHours = timeRange / 3_600_000;
+    // Estimasi lebar per label (pixel) — "Wed 06:00" ~65px, "14 May" ~55px
+    const labelWidthPx = rangeHours <= 168 ? 72 : 60;
+    // Berapa label yang muat di chart ini?
+    const maxLabels = Math.max(3, Math.floor(chartW / labelWidthPx));
+
+    // Hitung interval jam ideal
+    const idealHours = rangeHours / maxLabels;
+
+    // Snap ke nilai "cantik" terdekat
+    const niceHours =
+      idealHours <= 1
+        ? 1
+        : idealHours <= 2
+          ? 2
+          : idealHours <= 3
+            ? 3
+            : idealHours <= 6
+              ? 6
+              : idealHours <= 12
+                ? 12
+                : idealHours <= 24
+                  ? 24
+                  : idealHours <= 48
+                    ? 48
+                    : idealHours <= 72
+                      ? 72 // 3 hari
+                      : idealHours <= 120
+                        ? 120 // 5 hari
+                        : idealHours <= 168
+                          ? 168 // 7 hari
+                          : idealHours <= 336
+                            ? 336 // 14 hari
+                            : 720; // 30 hari
+
+    const snapMs = niceHours * 3_600_000;
+    const firstTs = Math.ceil(startTs / snapMs) * snapMs;
+
+    for (let ts = firstTs; ts <= endTs; ts += snapMs) {
+      if (ts >= startTs) {
+        xTicks.push({ ts, x: getX(ts) });
+        if (xTicks.length >= maxLabels + 1) break;
+      }
     }
-  }
-  // Pastikan ada tick di ujung kanan (end)
-  if (
-    xTicks.length === 0 ||
-    xTicks[xTicks.length - 1].ts < endTs - xStepMs * 0.5
-  ) {
-    xTicks.push({ ts: endTs, x: getX(endTs) });
   }
 
   // Helper format waktu NOC Style (Cerdas / Dinamis)
@@ -635,7 +660,7 @@ export function Chart({
           y={y}
           textAnchor="end"
           dominantBaseline="central"
-          fill={site.region === "etle" ? "#000000" : THEME.text}
+          fill={site.region === "etle" ? "#555555" : THEME.text}
           fontSize="10"
           fontFamily="Arial, sans-serif"
         >
@@ -647,10 +672,10 @@ export function Chart({
       {xTicks.map(({ ts, x }, i) => {
         const isLast = i === xTicks.length - 1;
         const isFirst = i === 0;
-        // Adjust text anchor for first label to avoid crowding
-        const anchor = isLast ? "end" : isFirst ? "start" : "middle";
-        // Add offset for first label to move it away from the axis
-        const xOffset = isFirst ? 12 : 0;
+        // Consistent spacing: first and last use end, middle use middle
+        const textAnchor = isFirst ? "start" : isLast ? "end" : "middle";
+        // Add equal offset from axis for all labels
+        const xPos = isFirst ? x + 15 : isLast ? x - 15 : x;
         return (
           <g key={i}>
             <line
@@ -662,10 +687,10 @@ export function Chart({
               strokeWidth={1}
             />
             <text
-              x={x + xOffset}
+              x={xPos}
               y={PAD.top + chartH + 18}
-              textAnchor={anchor}
-              fill={site.region === "etle" ? "#000000" : THEME.text}
+              textAnchor={textAnchor}
+              fill={site.region === "etle" ? "#333333" : THEME.text}
               fontSize="10"
               fontFamily="Arial, sans-serif"
             >
@@ -705,7 +730,11 @@ export function Chart({
         width={chartW}
         height={chartH}
         fill="none"
-        stroke="rgba(255,255,255,0.2)"
+        stroke={
+          site.region === "etle"
+            ? "rgba(100,100,100,0.3)"
+            : "rgba(255,255,255,0.2)"
+        }
         strokeWidth="1.2"
         strokeDasharray="3,3"
       />
@@ -714,12 +743,13 @@ export function Chart({
       {showTitle && (
         <text
           x={width / 2}
-          y={PAD.top - 8}
+          y={PAD.top - 12}
           textAnchor="middle"
-          fill="#000000"
+          fill="#666666"
           fontSize="11"
           fontFamily="JetBrains Mono, monospace"
-          fontWeight="bold"
+          fontWeight="normal"
+          letterSpacing="0"
         >
           {site.name}
         </text>

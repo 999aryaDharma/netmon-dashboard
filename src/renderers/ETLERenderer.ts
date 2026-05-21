@@ -5,113 +5,186 @@ import {
   ColorPalette,
   InterfaceProfile,
 } from "./ChartRenderer";
-import { generateETLESmoothData, generateSmoothData } from "../utils/dataGen";
 
-/**
- * ETLE Bali Renderer - Load Average Style
- * - Unidirectional load data (no IN/OUT split)
- * - 3 interfaces: 1 Minute, 5 Minute, 15 Minute Load Averages
- * - Stacked area chart (similar to MRTG but unidirectional)
- * - Yellow/Orange/Red color palette for visual intensity
- */
 export class ETLERenderer implements IChartRenderer {
   readonly region = "etle" as const;
 
-  private static readonly INTERFACE_COUNT = 3;
-  private static readonly BIDIRECTIONAL = false; // Load is unidirectional
-  private static readonly SHOW_ZERO_LINE = false; // No zero line for load
-
   getAxisConfig(): AxisConfig {
     return {
-      bidirectional: ETLERenderer.BIDIRECTIONAL,
-      showZeroLine: ETLERenderer.SHOW_ZERO_LINE,
+      bidirectional: false,
+      showZeroLine: false,
       labelFormat: "RRDTool",
-      steps: [20, 40, 60, 80, 100],
+      steps: [5, 10, 15],
     };
   }
 
   getColorPalette(): ColorPalette {
     return {
       interfaces: [
-        // 1 Minute Average - Yellow (base layer) #EACC00
-        { in: "#EACC00", out: "#EACC00" },
-        // 5 Minute Average - Orange (middle layer) #EA8F00
-        { in: "#EA8F00", out: "#EA8F00" },
-        // 15 Minute Average - Red (top layer) #FF0000
-        { in: "#FF0000", out: "#FF0000" },
+        { in: "#EACC00", out: "#EACC00" }, // 1 Minute - Kuning
+        { in: "#EA8F00", out: "#EA8F00" }, // 5 Minute - Oranye
+        { in: "#FF0000", out: "#FF0000" }, // 15 Minute - Merah
       ],
-      gridLine: "rgba(100, 100, 100, 0.3)", // Grey dashed lines
-      text: "#000000", // Black text on white background
-      zeroLine: "rgba(255, 0, 0, 0.3)", // Red dashed line
-      background: "#FFFFFF", // White background
+      gridLine: "rgba(100, 100, 100, 0.25)",
+      text: "#000000",
+      zeroLine: "rgba(255, 0, 0, 0.3)",
+      background: "#FFFFFF",
     };
   }
 
   getInterfaceProfiles(axisMax: number, siteName?: string): InterfaceProfile[] {
-    // For load average stacking:
-    // - All three layers contribute to the total visible height
-    // - Ratios ensure they stack naturally
     return [
-      // 1 Minute Average - Bottom layer (base)
       {
         name: "1 Minute Average",
-        inMinRatio: 0.1,
-        inMaxRatio: 0.35,
-        outMinRatio: 0.1,
-        outMaxRatio: 0.35,
+        inMinRatio: 0,
+        inMaxRatio: 1,
+        outMinRatio: 0,
+        outMaxRatio: 1,
       },
-      // 5 Minute Average - Middle layer
       {
         name: "5 Minute Average",
-        inMinRatio: 0.15,
-        inMaxRatio: 0.4,
-        outMinRatio: 0.15,
-        outMaxRatio: 0.4,
+        inMinRatio: 0,
+        inMaxRatio: 1,
+        outMinRatio: 0,
+        outMaxRatio: 1,
       },
-      // 15 Minute Average - Top layer
       {
         name: "15 Minute Average",
-        inMinRatio: 0.2,
-        inMaxRatio: 0.45,
-        outMinRatio: 0.2,
-        outMaxRatio: 0.45,
+        inMinRatio: 0,
+        inMaxRatio: 1,
+        outMinRatio: 0,
+        outMaxRatio: 1,
       },
     ];
   }
 
-  /**
-   * Generate interface data for ETLE load average
-   * Creates realistic load average patterns (lower variation than traffic)
-   */
   generateInterfaceData(
     profile: InterfaceProfile,
     startTs: number,
     endTs: number,
     seed: number,
     interval: number,
-    axisMax: number = 4.0,
+    axisMax: number = 15.0,
     siteName?: string,
   ): { dataIn: DataPoint[]; dataOut: DataPoint[] } {
     const isOneMin = profile.name.includes("1 Minute");
     const isFiveMin = profile.name.includes("5 Minute");
 
-    // 1-min paling volatile, 15-min paling smooth
-    const smoothness = isOneMin ? 1.0 : isFiveMin ? 0.8 : 0.6;
-    const uniqueSeed = seed + (isOneMin ? 0 : isFiveMin ? 500 : 1000);
+    // Semua layer pakai BASE SEED yang sama agar pola terkait
+    // Beda hanya di smoothing level
+    const smoothing = isOneMin ? 0 : isFiveMin ? 1 : 2; // 0=kasar, 2=smooth
 
-    // Range berbeda per layer - 15-min lebih rendah dari 1-min (karena smoothed)
-    const minRatio = isOneMin ? 0.1 : isFiveMin ? 0.12 : 0.14;
-    const maxRatio = isOneMin ? 0.75 : isFiveMin ? 0.65 : 0.55;
-
-    const data = generateETLESmoothData(
+    const data = generateRRDLoadAverage(
       startTs,
       endTs,
-      axisMax * minRatio,
-      axisMax * maxRatio,
-      uniqueSeed,
+      axisMax,
+      seed,
       interval,
+      smoothing,
     );
 
     return { dataIn: data, dataOut: data };
   }
+}
+
+// ─── Generator utama ────────────────────────────────────────────────────────
+
+function generateRRDLoadAverage(
+  startTs: number,
+  endTs: number,
+  axisMax: number,
+  seed: number,
+  interval: number,
+  smoothingLevel: number,
+): { timestamp: number; value: number }[] {
+  let s = seed | 0 || 1;
+  const rand = () => {
+    s = (s * 16807) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+
+  // ── Site personality — KONSISTEN untuk semua site ──
+  // Dimulai dari siteIndex yang sudah ditentukan dari seed
+  const siteBaseLoad = axisMax * (0.32 + (seed % 100) * 0.08 / 100); // Sangat konsisten: 32-40% dari axisMax
+  const peakHour = 7 + (seed % 60) * 4 / 60; // Consistent peak hour
+  const hasBump2 = (seed % 2) === 1;
+  const spikeFreq = 0.002 + (seed % 100) * 0.003 / 100; // 0.2-0.5% spike frequency
+  const spikeHeight = axisMax * (0.15 + (seed % 50) * 0.15 / 50); // Lebih kecil: 15-30% dari axisMax
+
+  const rawPoints: number[] = [];
+  const timestamps: number[] = [];
+
+  let baseWalk = siteBaseLoad;
+  let walkTarget = siteBaseLoad;
+  let walkHold = 0;
+
+  for (let ts = startTs; ts <= endTs; ts += interval) {
+    const d = new Date(ts);
+    const hour = d.getHours() + d.getMinutes() / 60;
+    const dow = d.getDay();
+
+    // Diurnal shape
+    const morning = Math.max(
+      0,
+      Math.sin(Math.max(0, (hour - peakHour) / 7) * Math.PI),
+    );
+    const aftBump = hasBump2
+      ? Math.max(0, Math.sin(Math.max(0, (hour - 14) / 5) * Math.PI)) * 0.4
+      : 0;
+    const nightMod = hour < 5 || hour > 23 ? 0.22 : hour < 7 ? 0.55 : 1.0;
+    const wkndMod = dow === 0 || dow === 6 ? 0.65 : 1.0;
+    const diurnal = (morning + aftBump) * nightMod * wkndMod;
+    const idealLoad = siteBaseLoad * 0.45 + diurnal * siteBaseLoad * 0.85;
+
+    // Slow walk toward ideal
+    if (walkHold <= 0) {
+      walkTarget = idealLoad * (0.75 + rand() * 0.5);
+      walkTarget = Math.max(
+        axisMax * 0.02,
+        Math.min(axisMax * 0.88, walkTarget),
+      );
+      walkHold = Math.floor(3 + rand() * 9);
+    }
+    walkHold--;
+    baseWalk += (walkTarget - baseWalk) * 0.18;
+
+    // Texture: noise lebih kecil untuk smoothness
+    const texture = (rand() - 0.5) * siteBaseLoad * 0.3;
+
+    // Spike tajam sesekali tapi kecil
+    let spike = 0;
+    if (rand() < spikeFreq) {
+      spike = spikeHeight * (0.5 + rand() * 0.4);
+    }
+
+    let val = baseWalk + texture + spike;
+    // Clamp untuk consistency dan tidak melebihi batas
+    val = Math.max(axisMax * 0.15, Math.min(axisMax * 0.85, val));
+
+    rawPoints.push(val);
+    timestamps.push(ts);
+  }
+
+  // Apply EMA smoothing per layer untuk smooth transitions
+  const smoothed = applyEMA(rawPoints, smoothingLevel);
+
+  // Scale down setiap layer untuk stacked area - total tidak boleh melebihi axisMax
+  // Layer 1-min = 100%, Layer 5-min = 80%, Layer 15-min = 70%
+  const scale = smoothingLevel === 0 ? 1.0 : smoothingLevel === 1 ? 0.8 : 0.7;
+
+  return timestamps.map((ts, i) => ({
+    timestamp: ts,
+    value: Math.max(0.05, smoothed[i] * scale),
+  }));
+}
+
+function applyEMA(data: number[], level: number): number[] {
+  if (data.length === 0) return [];
+  // 1min=more responsive, 5min=medium, 15min=very smooth
+  const alpha = level === 0 ? 0.6 : level === 1 ? 0.35 : 0.15;
+  const result = [data[0]];
+  for (let i = 1; i < data.length; i++) {
+    result.push(alpha * data[i] + (1 - alpha) * result[i - 1]);
+  }
+  return result;
 }

@@ -1,12 +1,6 @@
 import type { Site, SiteInterface } from "../types";
-import { generateSmoothData } from "./dataGen";
+import { getRenderer } from "../renderers/RendererFactory";
 import { mergeData } from "./siteHelpers";
-
-const ETLE_COLORS = [
-  "#EACC00", // 1 Minute - Yellow (layer bawah)
-  "#EA8F00", // 5 Minute - Orange (layer tengah)
-  "#FF0000", // 15 Minute - Red (layer atas)
-];
 
 export function createETLEBaliSite(
   name: string,
@@ -18,7 +12,7 @@ export function createETLEBaliSite(
   const now = customEndTs ?? Date.now();
   const startTs = customStartTs ?? now - 365 * 24 * 3_600_000;
   const interval = 60 * 60 * 1000; // 1 jam
-  const axisMax = 8.0;
+  const axisMax = 15.0; // Y axis: 0, 5, 10, 15
 
   const existingLoadId = `load-etle-${index}-${name
     .toLowerCase()
@@ -28,33 +22,33 @@ export function createETLEBaliSite(
   const nameHash =
     name.split("").reduce((a, b) => (a << 5) - a + b.charCodeAt(0), 0) >>> 0;
 
-  // Nilai dirancang agar total stacked TIDAK melebihi axisMax=8
-  // Max total: 2.5 + 2.0 + 1.5 = 6.0 — aman di bawah 8
-  const layerConfigs = [
-    { name: "1 Minute Average", min: 0.5, max: 2.5 },
-    { name: "5 Minute Average", min: 0.3, max: 2.0 },
-    { name: "15 Minute Average", min: 0.2, max: 1.5 },
-  ];
+  // Gunakan ETLERenderer — SAMA seperti createBaliSites pakai BaliRenderer
+  const renderer = getRenderer("etle");
+  const colorPalette = renderer.getColorPalette();
+  const interfaceProfiles = renderer.getInterfaceProfiles(axisMax, name);
 
-  const interfaces: SiteInterface[] = layerConfigs.map((cfg, i) => {
+  const interfaces: SiteInterface[] = interfaceProfiles.map((profile, i) => {
     const seed = index * 7919 + i * 1337 + nameHash;
 
-    const dataIn = generateSmoothData(
+    const generatedData = renderer.generateInterfaceData(
+      profile,
       startTs,
       now,
-      cfg.min,
-      cfg.max,
       seed,
       interval,
-      false,
+      axisMax,
+      name,
     );
 
     return {
       id: existingLoad?.interfaces[i]?.id || `iface-etle-${index}-${i}`,
-      name: cfg.name,
-      colorIn: ETLE_COLORS[i],
-      colorOut: ETLE_COLORS[i],
-      dataIn: mergeData(existingLoad?.interfaces[i]?.dataIn || [], dataIn),
+      name: profile.name,
+      colorIn: colorPalette.interfaces[i]?.in || "#EACC00",
+      colorOut: colorPalette.interfaces[i]?.out || "#EACC00",
+      dataIn: mergeData(
+        existingLoad?.interfaces[i]?.dataIn || [],
+        generatedData.dataIn,
+      ),
       dataOut: [],
     };
   });
@@ -66,7 +60,7 @@ export function createETLEBaliSite(
     unit: "load",
     axisMax,
     interfaces,
-    region: "etle", // tidak perlu "as any" karena SiteRegion sudah include "etle"
+    region: "etle",
     graphType: "load",
   };
 
