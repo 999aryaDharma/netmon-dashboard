@@ -266,7 +266,7 @@ export function generateBaliInterfaceData(
       endTs,
       profile.outMinRatio * axisMax,
       profile.outMaxRatio * axisMax,
-      (seed * 7919) + 997, // Seed berbeda untuk OUT
+      seed * 7919 + 997, // Seed berbeda untuk OUT
       interval,
     );
   }
@@ -405,7 +405,7 @@ function generateZabbixStyleData(
 
 /**
  * Data Generator khusus untuk Bali (Classic MRTG Style)
- * Mengembalikan karakteristik asli: padat, aktif, baseline tinggi, 
+ * Mengembalikan karakteristik asli: padat, aktif, baseline tinggi,
  * dengan jitter rapat dan drop tajam sesekali.
  */
 function generateClassicMRTGData(
@@ -438,7 +438,7 @@ function generateClassicMRTGData(
 
     // Simulasi "Lembah/Drop" mendadak khas jaringan (turun ke 5-25%)
     if (rand() < dropChance) {
-      rawValue *= (0.05 + rand() * 0.2); 
+      rawValue *= 0.05 + rand() * 0.2;
     }
 
     // Tambahkan jitter/noise kasar agar grafiknya terlihat padat layaknya rumput
@@ -476,19 +476,21 @@ function generateDiurnalData6Layers(
   const points: { timestamp: number; value: number }[] = [];
   const range = max - min;
   const rand = seededRandom(seed);
-  
+
   // Shared random untuk bikin semua 6 layer mengalami "RTO/Drop" di detik yang persis sama
-  const sharedDropRand = seededRandom(12345 + Math.floor(startTs / 86400000) + seed); 
+  const sharedDropRand = seededRandom(
+    12345 + Math.floor(startTs / 86400000) + seed,
+  );
 
   // --- SITE PERSONALITY TRAITS (Bikin tiap site beda bentuk) ---
   // rand() menghasilkan angka unik yang selalu sama untuk site yang sama
-  const baseLoad = 0.20 + rand() * 0.75; // Ketebalan grafik (20% - 95% dari kapasitas)
-  const peakShift = (rand() - 0.5) * 10;  // Geser jam sibuk (Bisa maju/mundur hingga 5 jam)
+  const baseLoad = 0.2 + rand() * 0.75; // Ketebalan grafik (20% - 95% dari kapasitas)
+  const peakShift = (rand() - 0.5) * 10; // Geser jam sibuk (Bisa maju/mundur hingga 5 jam)
   const diurnalStrength = 0.3 + rand() * 0.7; // Seberapa drastis drop di malam hari (30-100%)
   const volatility = 0.5 + rand() * 1.0; // Kekasaran rumput/noise (50-150%)
   const hasLunchDip = rand() > 0.4; // 60% site punya pola turun saat jam istirahat siang
   const weekendDropFactor = 0.2 + rand() * 0.5; // Weekend drop 20-70%
-  
+
   // --- LOSS / PUTUS TRAITS (Random untuk beberapa site saja) ---
   const hasOutages = rand() < 0.45; // 45% site akan mengalami putus/RTO
   const outageChance = 0.015 + rand() * 0.02; // 1.5-3.5% chance per interval (lebih sering)
@@ -508,7 +510,7 @@ function generateDiurnalData6Layers(
         points.push({ timestamp: ts, value: 0 });
         continue;
       }
-      
+
       // Chance untuk mulai outage baru
       if (rand() < outageChance) {
         outageRemaining.count = outageDuration;
@@ -522,20 +524,20 @@ function generateDiurnalData6Layers(
     if (shiftedHour < 0) shiftedHour += 24;
     if (shiftedHour >= 24) shiftedHour -= 24;
 
-    let hourFactor = (shiftedHour - 4) / 24; 
+    let hourFactor = (shiftedHour - 4) / 24;
     if (hourFactor < 0) hourFactor += 1;
-    
+
     // 2. Bentuk Kurva Dasar - variasi lebih ekstrem
     let diurnal = (Math.sin((hourFactor - 0.25) * 2 * Math.PI) + 1) / 2;
     diurnal = Math.pow(diurnal, 0.8 + rand() * 1.0); // Variasi kelandaian (0.8-1.8)
 
     // 3. Simulasi Jam Istirahat Siang (Drop jam 12:00 - 13:30)
     if (hasLunchDip && hour >= 11.5 && hour <= 14) {
-      diurnal *= 0.5 + (rand() * 0.3); // Drop 50-80%
+      diurnal *= 0.5 + rand() * 0.3; // Drop 50-80%
     }
 
     // 4. Terapkan kekuatan Siang/Malam (Ada site yang stabil terus 24 jam)
-    diurnal = (1 - diurnalStrength) + (diurnal * diurnalStrength);
+    diurnal = 1 - diurnalStrength + diurnal * diurnalStrength;
 
     // 5. Akhir pekan sepi (Penurunannya beda-beda tiap site)
     if (dayOfWeek === 0 || dayOfWeek === 6) {
@@ -544,12 +546,12 @@ function generateDiurnalData6Layers(
 
     // Hitung level dasar
     let baseLevel = diurnal * baseLoad;
-    baseLevel = Math.max(0.02, baseLevel); 
+    baseLevel = Math.max(0.02, baseLevel);
 
     // 6. Jitter / Rumput yang kekasarannya beda-beda
     const jitter = (rand() - 0.5) * 0.4 * baseLevel * volatility;
     let rawValue = baseLevel + jitter;
-    
+
     // 7. LOGIKA LAYER TIPIS / PAKU (ether4, ether5, LAN)
     if (min === 0) {
       if (rand() < 0.15 * volatility) {
@@ -561,7 +563,7 @@ function generateDiurnalData6Layers(
 
     // 8. Global Drop (Simulasi link kedip / RTO sejenak)
     if (sharedDropRand() < 0.02) {
-      rawValue *= 0.02 + (rand() * 0.15); 
+      rawValue *= 0.02 + rand() * 0.15;
     }
 
     // Eksekusi nilai final
@@ -626,6 +628,14 @@ export function generateBantenInterfaceData(
  * Generate data ETLE Load Average - smooth seperti RRDTool asli
  * Karakteristik: naik turun gradual, tidak spiky, mirip CPU load average
  */
+/**
+ * Generate data ETLE Load Average - smooth seperti RRDTool asli
+ * Karakteristik:
+ * - Long-wave epoch: siklus HIGH (4-11 hari) / LOW (3-8 hari) seperti referensi
+ * - Smooth EMA: transisi gradual, tidak spiky
+ * - Pola harian & weekend subtil
+ * - smoothingSpeed: 1-min=cepat(0.25), 5-min=sedang(0.12), 15-min=lambat(0.06)
+ */
 export function generateETLESmoothData(
   startTs: number,
   endTs: number,
@@ -633,56 +643,73 @@ export function generateETLESmoothData(
   max: number,
   seed: number,
   interval: number = 60 * 60 * 1000,
+  smoothingSpeed: number = 0.15,
 ): { timestamp: number; value: number }[] {
   const points: { timestamp: number; value: number }[] = [];
   const range = max - min;
   const rand = seededRandom(seed);
 
-  // Load average bergerak lambat - inertia tinggi
-  let currentLoad = min + range * (0.3 + rand() * 0.4);
-  const targetSpeed = 0.04 + rand() * 0.06; // Seberapa cepat bergerak ke target baru
-  let targetLoad = currentLoad;
-  let targetHoldCount = 0;
+  // ── Site Personality (deterministik per seed) ─────────────────────────
+  const peakHour = 7 + rand() * 5; // Puncak harian jam 07-12
+  const diurnalStr = 0.2 + rand() * 0.35; // Kekuatan pola siang/malam
+  const weekendDrop = 0.2 + rand() * 0.5; // Penurunan akhir pekan 20-70%
+  const hasAft = rand() > 0.55; // Puncak sore opsional
+  const baseLoad = 0.6 + rand() * 0.35; // Level baseline saat periode HIGH — DINAIKKAN untuk amplitude
 
-  // Personality per site
-  const baseLevel = 0.2 + rand() * 0.6;
-  const peakHour = 8 + rand() * 4; // jam 8-12 paling sibuk
-  const hasAfternoonBump = rand() > 0.4;
+  // ── Long-Wave Epoch: fase beberapa hari HIGH / LOW ────────────────────
+  const highDays = 4 + rand() * 7; // 4-11 hari HIGH load
+  const lowDays = 3 + rand() * 5; // 3-8  hari LOW load
+
+  // Pre-compute epoch boundaries agar konsisten di seluruh loop
+  const epochs: { start: number; isHigh: boolean }[] = [];
+  let et = startTs;
+  let hi = rand() > 0.5; // starting phase acak
+  while (et < endTs + interval) {
+    epochs.push({ start: et, isHigh: hi });
+    const dur =
+      (hi ? highDays : lowDays) * (0.5 + rand() * 1.0) * 24 * 3_600_000;
+    et += dur;
+    hi = !hi;
+  }
+
+  // ── Generate Data ──────────────────────────────────────────────────────
+  let cv = min + range * (0.1 + rand() * 0.3); // Current value (smooth state)
+  let eIdx = 0; // Epoch index pointer
 
   for (let ts = startTs; ts <= endTs; ts += interval) {
+    // Advance epoch pointer
+    while (eIdx + 1 < epochs.length && ts >= epochs[eIdx + 1].start) eIdx++;
+    const isHigh = epochs[eIdx]?.isHigh ?? false;
+
     const date = new Date(ts);
     const hour = date.getHours() + date.getMinutes() / 60;
-    const dayOfWeek = date.getDay();
+    const dow = date.getDay();
 
-    // --- Pola diurnal yang smooth ---
-    const morningPeak = Math.max(0, Math.sin(((hour - peakHour) / 8) * Math.PI));
-    const afternoonBump = hasAfternoonBump
-      ? Math.max(0, Math.sin(((hour - 14) / 4) * Math.PI)) * 0.3
+    // Target ratio berdasarkan fase HIGH/LOW
+    let tr = isHigh
+      ? baseLoad * (0.7 + rand() * 0.6) // HIGH: 70-130% dari baseLoad
+      : 0.02 + rand() * 0.1; // LOW:  2-12%
+
+    // Pola harian (subtil)
+    const morning = Math.max(0, Math.sin(((hour - peakHour) / 7) * Math.PI));
+    const aft = hasAft
+      ? Math.max(0, Math.sin(((hour - 14) / 5) * Math.PI)) * 0.35
       : 0;
-    const nightDrop = hour < 5 || hour > 22 ? 0.3 : 1.0;
-    const weekendMod = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.6 : 1.0;
+    const dayMod = Math.max(0.08, morning + aft);
+    tr *= 1 - diurnalStr + diurnalStr * dayMod * 2;
 
-    const diurnal = (morningPeak + afternoonBump) * nightDrop * weekendMod;
-    const idealLoad = min + range * Math.max(0.1, baseLevel * 0.5 + diurnal * baseLevel);
+    // Weekend drop
+    if (dow === 0 || dow === 6) tr *= weekendDrop;
 
-    // --- Slow random walk menuju target ---
-    if (targetHoldCount <= 0) {
-      // Tetapkan target baru yang dekat dengan idealLoad
-      targetLoad = idealLoad + (rand() - 0.5) * range * 0.15;
-      targetLoad = Math.max(min + range * 0.05, Math.min(min + range * 0.95, targetLoad));
-      targetHoldCount = Math.floor(3 + rand() * 8); // Tahan 3-11 interval
-    }
-    targetHoldCount--;e
+    // EMA smooth menuju target
+    const target = min + range * Math.max(0.005, Math.min(0.98, tr));
+    cv += (target - cv) * smoothingSpeed;
 
-    // Gerak smooth menuju target (EMA-style)
-    currentLoad += (targetLoad - currentLoad) * targetSpeed;
+    // Jitter sangat halus agar tidak spiky
+    const noise = (rand() - 0.5) * range * 0.018;
+    const val = Math.max(min * 0.05, Math.min(max * 0.97, cv + noise));
 
-    // Micro jitter sangat halus
-    const jitter = (rand() - 0.5) * range * 0.02;
-    let finalValue = currentLoad + jitter;
-    finalValue = Math.max(min + range * 0.02, Math.min(min + range * 0.98, finalValue));
-
-    points.push({ timestamp: ts, value: finalValue });
+    points.push({ timestamp: ts, value: val });
   }
 
   return points;

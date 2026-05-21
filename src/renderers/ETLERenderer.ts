@@ -5,6 +5,7 @@ import {
   ColorPalette,
   InterfaceProfile,
 } from "./ChartRenderer";
+import { generateETLESmoothData } from "../utils/dataGen";
 
 export class ETLERenderer implements IChartRenderer {
   readonly region = "etle" as const;
@@ -72,13 +73,17 @@ export class ETLERenderer implements IChartRenderer {
 
     // Semua layer pakai BASE SEED yang sama agar pola terkait
     // Beda hanya di smoothing level
-    const smoothing = isOneMin ? 0 : isFiveMin ? 1 : 2; // 0=kasar, 2=smooth
+    const smoothing = isOneMin ? 0.25 : isFiveMin ? 0.12 : 0.06;
 
-    const data = generateRRDLoadAverage(
+    const minRatio = isOneMin ? 0.08 : isFiveMin ? 0.06 : 0.04;
+    const maxRatio = isOneMin ? 0.8 : isFiveMin ? 0.65 : 0.5;
+
+    const data = generateETLESmoothData(
       startTs,
       endTs,
-      axisMax,
-      seed,
+      axisMax * minRatio,
+      axisMax * maxRatio,
+      seed, // gunakan seed langsung (tidak + 500/1000) agar korrelasi
       interval,
       smoothing,
     );
@@ -97,68 +102,55 @@ function generateRRDLoadAverage(
   interval: number,
   smoothingLevel: number,
 ): { timestamp: number; value: number }[] {
-  let s = seed | 0 || 1;
-  const rand = () => {
-    s = (s * 16807) % 2147483647;
-    return (s - 1) / 2147483646;
-  };
-
-  // ── Site personality — KONSISTEN untuk semua site ──
-  // Dimulai dari siteIndex yang sudah ditentukan dari seed
-  const siteBaseLoad = axisMax * (0.32 + (seed % 100) * 0.08 / 100); // Sangat konsisten: 32-40% dari axisMax
-  const peakHour = 7 + (seed % 60) * 4 / 60; // Consistent peak hour
-  const hasBump2 = (seed % 2) === 1;
-  const spikeFreq = 0.002 + (seed % 100) * 0.003 / 100; // 0.2-0.5% spike frequency
-  const spikeHeight = axisMax * (0.15 + (seed % 50) * 0.15 / 50); // Lebih kecil: 15-30% dari axisMax
+  // Site personality — fully deterministic, sama untuk semua site
+  const siteBaseLoad = axisMax * (0.35 + ((seed % 100) * 0.06) / 100); // 35-41% dari axisMax
+  const peakHour = 7.5 + ((seed % 60) * 3) / 60; // Consistent peak hour
+  const hasBump2 = seed % 2 === 1;
 
   const rawPoints: number[] = [];
   const timestamps: number[] = [];
-
-  let baseWalk = siteBaseLoad;
-  let walkTarget = siteBaseLoad;
-  let walkHold = 0;
 
   for (let ts = startTs; ts <= endTs; ts += interval) {
     const d = new Date(ts);
     const hour = d.getHours() + d.getMinutes() / 60;
     const dow = d.getDay();
+    const dayOfYear = Math.floor(
+      (ts - new Date(new Date(ts).getFullYear(), 0, 0).getTime()) / 86400000,
+    );
 
-    // Diurnal shape
+    // ── Diurnal pattern (morning peak) ──
     const morning = Math.max(
       0,
-      Math.sin(Math.max(0, (hour - peakHour) / 7) * Math.PI),
+      Math.sin(Math.max(0, (hour - peakHour) / 6.5) * Math.PI),
     );
     const aftBump = hasBump2
-      ? Math.max(0, Math.sin(Math.max(0, (hour - 14) / 5) * Math.PI)) * 0.4
+      ? Math.max(0, Math.sin(Math.max(0, (hour - 14) / 4.5) * Math.PI)) * 0.35
       : 0;
-    const nightMod = hour < 5 || hour > 23 ? 0.22 : hour < 7 ? 0.55 : 1.0;
-    const wkndMod = dow === 0 || dow === 6 ? 0.65 : 1.0;
-    const diurnal = (morning + aftBump) * nightMod * wkndMod;
-    const idealLoad = siteBaseLoad * 0.45 + diurnal * siteBaseLoad * 0.85;
+    const nightMod = hour < 5 || hour > 23 ? 0.25 : hour < 7 ? 0.6 : 1.0;
+    const wkndMod = dow === 0 || dow === 6 ? 0.68 : 1.0;
 
-    // Slow walk toward ideal
-    if (walkHold <= 0) {
-      walkTarget = idealLoad * (0.75 + rand() * 0.5);
-      walkTarget = Math.max(
-        axisMax * 0.02,
-        Math.min(axisMax * 0.88, walkTarget),
-      );
-      walkHold = Math.floor(3 + rand() * 9);
-    }
-    walkHold--;
-    baseWalk += (walkTarget - baseWalk) * 0.18;
+    const diurnalFactor = (morning + aftBump) * nightMod * wkndMod;
+    const baseValue = siteBaseLoad * (0.5 + diurnalFactor * 0.8);
 
-    // Texture: noise lebih kecil untuk smoothness
-    const texture = (rand() - 0.5) * siteBaseLoad * 0.3;
+    // ── Smooth sine-based micro-variations (deterministic based on time) ──
+    const microTime = (ts / 60000) % 1440; // Cycle every 24 hours
+    const microWave1 =
+      Math.sin((microTime * Math.PI) / 180) * 0.12 * siteBaseLoad;
+    const microWave2 =
+      Math.sin((microTime * Math.PI) / 90) * 0.08 * siteBaseLoad;
 
-    // Spike tajam sesekali tapi kecil
-    let spike = 0;
-    if (rand() < spikeFreq) {
-      spike = spikeHeight * (0.5 + rand() * 0.4);
-    }
+    // ── Seed-based texture variation (deterministic) ──
+    let textureVal = 0;
+    const texturePhase =
+      ((seed * 7919 + dayOfYear * 12347) % 1000000) / 1000000;
+    textureVal =
+      (Math.sin(texturePhase * Math.PI * 2 + microTime * 0.05) - 0.5) *
+      0.15 *
+      siteBaseLoad;
 
-    let val = baseWalk + texture + spike;
-    // Clamp untuk consistency dan tidak melebihi batas
+    let val = baseValue + microWave1 + microWave2 + textureVal;
+
+    // Clamp untuk consistency
     val = Math.max(axisMax * 0.15, Math.min(axisMax * 0.85, val));
 
     rawPoints.push(val);
@@ -168,9 +160,9 @@ function generateRRDLoadAverage(
   // Apply EMA smoothing per layer untuk smooth transitions
   const smoothed = applyEMA(rawPoints, smoothingLevel);
 
-  // Scale down setiap layer untuk stacked area - total tidak boleh melebihi axisMax
-  // Layer 1-min = 100%, Layer 5-min = 80%, Layer 15-min = 70%
-  const scale = smoothingLevel === 0 ? 1.0 : smoothingLevel === 1 ? 0.8 : 0.7;
+  // Scale down setiap layer untuk stacked area
+  // Layer 1-min = 100%, Layer 5-min = 78%, Layer 15-min = 65%
+  const scale = smoothingLevel === 0 ? 1.0 : smoothingLevel === 1 ? 0.78 : 0.65;
 
   return timestamps.map((ts, i) => ({
     timestamp: ts,

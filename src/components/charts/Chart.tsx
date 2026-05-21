@@ -291,7 +291,7 @@ export function Chart({
     // Hitung interval jam ideal
     const idealHours = rangeHours / maxLabels;
 
-    // Snap ke nilai "cantik" terdekat
+    // Snap ke nilai "cantik" terdekat — IMPROVED untuk long ranges
     const niceHours =
       idealHours <= 1
         ? 1
@@ -310,12 +310,16 @@ export function Chart({
                     : idealHours <= 72
                       ? 72 // 3 hari
                       : idealHours <= 120
-                        ? 120 // 5 hari
+                        ? 120 // 5 hari — untuk 30D
                         : idealHours <= 168
                           ? 168 // 7 hari
-                          : idealHours <= 336
-                            ? 336 // 14 hari
-                            : 720; // 30 hari
+                          : idealHours <= 240
+                            ? 240 // 10 hari
+                            : idealHours <= 336
+                              ? 336 // 14 hari
+                              : idealHours <= 480
+                                ? 480 // 20 hari
+                                : 720; // 30 hari
 
     const snapMs = niceHours * 3_600_000;
     const firstTs = Math.ceil(startTs / snapMs) * snapMs;
@@ -671,11 +675,7 @@ export function Chart({
       {/* --- LAYER 7: Label X-Axis --- */}
       {xTicks.map(({ ts, x }, i) => {
         const isLast = i === xTicks.length - 1;
-        const isFirst = i === 0;
-        // Consistent spacing: first and last use end, middle use middle
-        const textAnchor = isFirst ? "start" : isLast ? "end" : "middle";
-        // Add equal offset from axis for all labels
-        const xPos = isFirst ? x + 15 : isLast ? x - 15 : x;
+
         return (
           <g key={i}>
             <line
@@ -687,9 +687,10 @@ export function Chart({
               strokeWidth={1}
             />
             <text
-              x={xPos}
+              x={x + 16}
               y={PAD.top + chartH + 18}
-              textAnchor={textAnchor}
+              textAnchor="middle"
+              dominantBaseline="hanging"
               fill={site.region === "etle" ? "#333333" : THEME.text}
               fontSize="10"
               fontFamily="Arial, sans-serif"
